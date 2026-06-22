@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Рекомендации — Здоровье семьи</title>
+  <meta name="theme-color" content="#6C63FF">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-top">
+    <div class="app-title"><span>💡</span> Рекомендации</div>
+    <div class="profile-switcher">
+      <button class="profile-btn" data-profile="profile1">Я</button>
+      <button class="profile-btn" data-profile="profile2">Супруга</button>
+    </div>
+  </div>
+</header>
+
+<main class="main-content">
+  <div id="focusWeek"></div>
+  <div id="recsList"></div>
+</main>
+
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item"><div class="nav-icon">🏠</div><span>Главная</span></a>
+  <a href="analyses.html" class="nav-item"><div class="nav-icon">🩺</div><span>Анализы</span></a>
+  <a href="dynamics.html" class="nav-item"><div class="nav-icon">📈</div><span>Динамика</span></a>
+  <a href="workouts.html" class="nav-item"><div class="nav-icon">🏋️</div><span>Тренировки</span></a>
+  <a href="nutrition.html" class="nav-item"><div class="nav-icon">🥗</div><span>Питание</span></a>
+  <a href="goals.html" class="nav-item"><div class="nav-icon">🎯</div><span>Цели</span></a>
+  <a href="profiles.html" class="nav-item"><div class="nav-icon">👤</div><span>Профиль</span></a>
+</nav>
+
+<script src="js/storage.js"></script>
+<script src="js/norms.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/utils.js"></script>
+<script>
+function renderRecs() {
+  const profileId = Storage.getActiveProfile();
+  const profile = Storage.getProfile(profileId);
+  const analyses = Storage.getAnalyses(profileId);
+  const savedChecks = JSON.parse(localStorage.getItem(`rec_checks_${profileId}`) || '{}');
+
+  if (!analyses.length) {
+    document.getElementById('recsList').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">💡</div>
+        <div class="empty-state-text">Нет данных для рекомендаций</div>
+        <div class="empty-state-sub">Добавьте результаты анализов</div>
+        <a href="analyses.html" class="btn btn-primary mt-16">Добавить анализы</a>
+      </div>`;
+    document.getElementById('focusWeek').innerHTML = '';
+    return;
+  }
+
+  const latest = analyses[0];
+  const recs = getActiveRecommendations(latest.values, profile.gender);
+
+  if (!recs.length) {
+    document.getElementById('recsList').innerHTML = `
+      <div class="alert alert-success" style="border-radius:var(--radius);padding:24px;text-align:center">
+        <div style="font-size:2.5rem;margin-bottom:8px">🎉</div>
+        <div style="font-weight:700;font-size:1.1rem">Все показатели в норме!</div>
+        <div style="margin-top:6px;font-size:0.9rem">Продолжайте в том же духе</div>
+      </div>`;
+    document.getElementById('focusWeek').innerHTML = '';
+    return;
+  }
+
+  // Focus card — most severe
+  const focus = recs.find(r => r.severity === 'danger') || recs[0];
+  document.getElementById('focusWeek').innerHTML = `
+    <div class="focus-card">
+      <div class="focus-title">🎯 Фокус этой недели</div>
+      <div class="focus-text">${focus.title}</div>
+      <div style="margin-top:6px;opacity:0.9;font-size:0.85rem">${focus.problem}</div>
+    </div>`;
+
+  document.getElementById('recsList').innerHTML = recs.map((r, i) => {
+    const checked = savedChecks[r.id] || false;
+    return `
+    <div class="rec-card ${r.severity}" id="rec_${r.id}">
+      <div class="rec-title">${r.title} <span class="badge badge-${r.severity === 'danger' ? 'danger' : r.severity === 'warning' ? 'warning' : 'success'}">${r.severity === 'danger' ? 'Важно' : 'Внимание'}</span></div>
+      <div class="rec-details" style="margin-bottom:10px;color:var(--text)">${r.problem}</div>
+
+      <div style="margin-bottom:8px">
+        <div style="font-weight:700;font-size:0.82rem;color:var(--success);margin-bottom:4px">✅ Что добавить:</div>
+        <ul class="rec-details">${r.eat.map(f => `<li>${f}</li>`).join('')}</ul>
+      </div>
+
+      ${r.avoid && r.avoid.length ? `
+      <div style="margin-bottom:8px">
+        <div style="font-weight:700;font-size:0.82rem;color:var(--danger);margin-bottom:4px">❌ Что исключить:</div>
+        <ul class="rec-details">${r.avoid.map(f => `<li>${f}</li>`).join('')}</ul>
+      </div>` : ''}
+
+      <div style="margin-bottom:8px">
+        <div style="font-weight:700;font-size:0.82rem;color:var(--primary);margin-bottom:4px">🏃 Тренировки:</div>
+        <div class="rec-details">${r.workout}</div>
+      </div>
+
+      ${r.supplements ? `
+      <div>
+        <div style="font-weight:700;font-size:0.82rem;color:var(--warning);margin-bottom:4px">💊 Добавки:</div>
+        <div class="rec-details">${r.supplements}</div>
+      </div>` : ''}
+
+      <label class="rec-checkbox">
+        <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleCheck('${r.id}', this.checked)">
+        Выполняю эту рекомендацию
+      </label>
+    </div>`;
+  }).join('');
+}
+
+function toggleCheck(id, val) {
+  const profileId = Storage.getActiveProfile();
+  const checks = JSON.parse(localStorage.getItem(`rec_checks_${profileId}`) || '{}');
+  checks[id] = val;
+  localStorage.setItem(`rec_checks_${profileId}`, JSON.stringify(checks));
+  if (val) showToast('Отмечено! Молодец! 💪');
+}
+
+setupProfileSwitcher(renderRecs);
+renderRecs();
+</script>
+</body>
+</html>

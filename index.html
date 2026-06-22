@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Здоровье семьи — Дашборд</title>
+  <meta name="theme-color" content="#6C63FF">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="app-header">
+  <div class="header-top">
+    <div class="app-title"><span>❤️</span> Здоровье семьи</div>
+    <div class="profile-switcher">
+      <button class="profile-btn" data-profile="profile1">Я</button>
+      <button class="profile-btn" data-profile="profile2">Супруга</button>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main class="main-content">
+
+  <!-- ALERT BANNER -->
+  <div id="alertBanner" style="display:none"></div>
+
+  <!-- HEALTH INDEX CARD -->
+  <div class="card health-index-card" id="healthIndexCard">
+    <div class="health-index-label">Индекс здоровья</div>
+    <div class="health-index-value" id="healthIndexValue">—</div>
+    <div class="health-index-status" id="healthIndexStatus">Нет данных</div>
+    <!-- ENERGY -->
+    <div class="energy-section">
+      <div class="energy-label">
+        <span>⚡ Энергия сегодня</span>
+        <span id="energyDisplay">5 / 10</span>
+      </div>
+      <input type="range" class="energy-slider" id="energySlider" min="1" max="10" value="5">
+    </div>
+  </div>
+
+  <!-- QUICK STATUS -->
+  <div class="quick-status-grid">
+    <div class="status-item">
+      <div class="status-icon">🩺</div>
+      <div class="status-value" id="lastAnalysisVal">—</div>
+      <div class="status-label">Последний анализ</div>
+    </div>
+    <div class="status-item">
+      <div class="status-icon">🏋️</div>
+      <div class="status-value" id="lastWorkoutVal">—</div>
+      <div class="status-label">Тренировка</div>
+    </div>
+    <div class="status-item">
+      <div class="status-icon">🎯</div>
+      <div class="status-value" id="activeGoalsVal">—</div>
+      <div class="status-label">Целей активных</div>
+    </div>
+  </div>
+
+  <!-- TOP RECOMMENDATIONS -->
+  <div class="card" id="recsCard" style="display:none">
+    <div class="card-header">
+      <div class="card-title">💡 Рекомендации</div>
+      <a href="recommendations.html" class="btn btn-outline btn-sm">Все</a>
+    </div>
+    <div id="topRecs"></div>
+  </div>
+
+  <!-- MINI CHART -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📈 Динамика гемоглобина</div>
+      <a href="dynamics.html" class="btn btn-outline btn-sm">Подробнее</a>
+    </div>
+    <div class="chart-container">
+      <canvas id="miniChart"></canvas>
+    </div>
+    <div id="trendBadge" class="mt-8" style="font-size:0.85rem; color:var(--text-secondary)"></div>
+  </div>
+
+  <!-- CHECKIN BUTTON -->
+  <button class="btn btn-accent btn-block" id="checkinBtn" style="margin-bottom:16px; font-size:1rem; padding:16px;">
+    ✅ Что сегодня сделал?
+  </button>
+
+</main>
+
+<!-- CHECKIN MODAL -->
+<div class="modal-overlay" id="checkinModal">
+  <div class="modal">
+    <div class="modal-title">
+      ✅ Чек-ин на сегодня
+      <button class="modal-close" id="closeModal">✕</button>
+    </div>
+    <div id="checkinItems">
+      <label class="checkin-item">
+        <input type="checkbox" name="ci" value="water"> <span class="checkin-label">Выпил 2л воды</span><span class="checkin-points">+10 🌟</span>
+      </label>
+      <label class="checkin-item">
+        <input type="checkbox" name="ci" value="workout"> <span class="checkin-label">Потренировался</span><span class="checkin-points">+20 🌟</span>
+      </label>
+      <label class="checkin-item">
+        <input type="checkbox" name="ci" value="sleep"> <span class="checkin-label">Поспал 7-8 часов</span><span class="checkin-points">+15 🌟</span>
+      </label>
+      <label class="checkin-item">
+        <input type="checkbox" name="ci" value="veggies"> <span class="checkin-label">Ел овощи / фрукты</span><span class="checkin-points">+10 🌟</span>
+      </label>
+      <label class="checkin-item">
+        <input type="checkbox" name="ci" value="nosugar"> <span class="checkin-label">Без сладкого</span><span class="checkin-points">+10 🌟</span>
+      </label>
+      <label class="checkin-item">
+        <input type="checkbox" name="ci" value="walk"> <span class="checkin-label">Прогулка на улице</span><span class="checkin-points">+10 🌟</span>
+      </label>
+      <label class="checkin-item">
+        <input type="checkbox" name="ci" value="meds"> <span class="checkin-label">Принял витамины / лекарства</span><span class="checkin-points">+5 🌟</span>
+      </label>
+    </div>
+    <div class="mt-16">
+      <div class="score-display">
+        <div class="score-number" id="checkinScore">0</div>
+        <div class="score-label">очков сегодня 🌟</div>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-block mt-12" id="saveCheckinBtn">Сохранить</button>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item active" data-page="dashboard">
+    <div class="nav-icon">🏠</div><span>Главная</span>
+  </a>
+  <a href="analyses.html" class="nav-item" data-page="analyses">
+    <div class="nav-icon">🩺</div><span>Анализы</span>
+  </a>
+  <a href="dynamics.html" class="nav-item" data-page="dynamics">
+    <div class="nav-icon">📈</div><span>Динамика</span>
+  </a>
+  <a href="workouts.html" class="nav-item" data-page="workouts">
+    <div class="nav-icon">🏋️</div><span>Тренировки</span>
+  </a>
+  <a href="nutrition.html" class="nav-item" data-page="nutrition">
+    <div class="nav-icon">🥗</div><span>Питание</span>
+  </a>
+  <a href="goals.html" class="nav-item" data-page="goals">
+    <div class="nav-icon">🎯</div><span>Цели</span>
+  </a>
+  <a href="profiles.html" class="nav-item" data-page="profiles">
+    <div class="nav-icon">👤</div><span>Профиль</span>
+  </a>
+</nav>
+
+<script src="js/storage.js"></script>
+<script src="js/norms.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/utils.js"></script>
+<script>
+let miniChartInstance = null;
+
+function loadDashboard() {
+  const profileId = Storage.getActiveProfile();
+  const profile = Storage.getProfile(profileId);
+  const analyses = Storage.getAnalyses(profileId);
+  const workouts = Storage.getWorkouts(profileId);
+  const goals = Storage.getGoals(profileId);
+  const energyLog = Storage.getEnergyLog(profileId);
+
+  // Profile names in switcher
+  const p1 = Storage.getProfile('profile1');
+  const p2 = Storage.getProfile('profile2');
+  document.querySelectorAll('.profile-btn')[0].textContent = p1.name || 'Я';
+  document.querySelectorAll('.profile-btn')[1].textContent = p2.name || 'Супруга';
+
+  // Energy
+  const todayEnergy = energyLog.find(e => new Date(e.date).toDateString() === new Date().toDateString());
+  const energyVal = todayEnergy ? todayEnergy.level : 5;
+  const slider = document.getElementById('energySlider');
+  slider.value = energyVal;
+  document.getElementById('energyDisplay').textContent = `${energyVal} / 10`;
+
+  // Health Index
+  const latestAnalysis = analyses[0];
+  const indexVal = latestAnalysis ? calculateHealthIndex(latestAnalysis.values, profile.gender) : 0;
+  const idxEl = document.getElementById('healthIndexValue');
+  const statusEl = document.getElementById('healthIndexStatus');
+  if (latestAnalysis) {
+    idxEl.textContent = indexVal;
+    statusEl.textContent = getHealthStatusLabel(indexVal);
+    const color = getHealthIndexColor(indexVal);
+    idxEl.style.color = color === 'success' ? '#43D39E' : color === 'warning' ? '#FFB830' : '#FF4757';
+  } else {
+    idxEl.textContent = '—';
+    statusEl.textContent = 'Добавьте анализы';
+  }
+
+  // Quick status
+  document.getElementById('lastAnalysisVal').textContent = latestAnalysis ? daysAgo(latestAnalysis.date) : 'Нет';
+  document.getElementById('lastWorkoutVal').textContent = workouts[0] ? daysAgo(workouts[0].date) : 'Нет';
+  document.getElementById('activeGoalsVal').textContent = goals.length || '0';
+
+  // Alert banner
+  const alertEl = document.getElementById('alertBanner');
+  if (latestAnalysis) {
+    const recs = getActiveRecommendations(latestAnalysis.values, profile.gender);
+    const dangers = recs.filter(r => r.severity === 'danger');
+    if (dangers.length > 0) {
+      alertEl.style.display = 'block';
+      alertEl.innerHTML = `<div class="alert alert-danger">⚠️ Обнаружены отклонения в ${dangers.length} показателях. <a href="recommendations.html" style="color:inherit;font-weight:700;text-decoration:underline;">Смотреть рекомендации →</a></div>`;
+    } else alertEl.style.display = 'none';
+  }
+
+  // Top 3 recommendations
+  if (latestAnalysis) {
+    const recs = getActiveRecommendations(latestAnalysis.values, profile.gender);
+    const recsCard = document.getElementById('recsCard');
+    if (recs.length > 0) {
+      recsCard.style.display = 'block';
+      document.getElementById('topRecs').innerHTML = recs.slice(0, 3).map(r => `
+        <div class="rec-card ${r.severity}">
+          <div class="rec-title">${r.title}</div>
+          <div class="rec-details">${r.problem}</div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // Mini chart (hemoglobin trend)
+  const hbData = analyses
+    .filter(a => a.values && a.values.hemoglobin)
+    .slice(0, 10).reverse()
+    .map(a => ({ x: formatDateShort(a.date), y: +a.values.hemoglobin }));
+
+  const ctx = document.getElementById('miniChart').getContext('2d');
+  if (miniChartInstance) miniChartInstance.destroy();
+  if (hbData.length > 0) {
+    const norm = profile.gender === 'female' ? Norms.hemoglobin.female : Norms.hemoglobin.male;
+    miniChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: hbData.map(d => d.x),
+        datasets: [
+          {
+            label: 'Гемоглобин (г/л)',
+            data: hbData.map(d => d.y),
+            borderColor: '#6C63FF',
+            backgroundColor: 'rgba(108,99,255,0.1)',
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#6C63FF',
+            pointRadius: 5
+          },
+          {
+            label: 'Норма min',
+            data: hbData.map(() => norm[0]),
+            borderColor: 'rgba(67,211,158,0.5)',
+            borderDash: [6,3],
+            pointRadius: 0,
+            fill: false
+          },
+          {
+            label: 'Норма max',
+            data: hbData.map(() => norm[1]),
+            borderColor: 'rgba(67,211,158,0.5)',
+            borderDash: [6,3],
+            pointRadius: 0,
+            fill: '-1',
+            backgroundColor: 'rgba(67,211,158,0.08)'
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { ticks: { font: { size: 11 } } },
+          x: { ticks: { font: { size: 11 }, maxRotation: 30 } }
+        }
+      }
+    });
+    // Trend
+    const { trend, change } = calculateTrend(hbData.map(d => d.y));
+    const norm0 = Norms.hemoglobin, normRange = profile.gender === 'female' ? norm0.female : norm0.male;
+    const lastHb = hbData[hbData.length-1].y;
+    const inNorm = lastHb >= normRange[0] && lastHb <= normRange[1];
+    document.getElementById('trendBadge').innerHTML = `Тенденция: <strong>${getTrendLabel(trend)}</strong>${change ? ` (${change > 0 ? '+' : ''}${change}%)` : ''}${inNorm ? ' · <span class="color-success">В норме ✓</span>' : ' · <span class="color-danger">Отклонение!</span>'}`;
+  } else {
+    ctx.canvas.parentElement.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Добавьте анализы</div><div class="empty-state-sub">для отображения графика</div></div>';
+  }
+
+  // Checkin restore
+  const todayCheckin = Storage.getCheckins(profileId).find(c => new Date(c.date).toDateString() === new Date().toDateString());
+  if (todayCheckin && todayCheckin.items) {
+    todayCheckin.items.forEach(v => {
+      const cb = document.querySelector(`input[name=ci][value="${v}"]`);
+      if (cb) cb.checked = true;
+    });
+    updateCheckinScore();
+  }
+}
+
+// Energy slider
+document.getElementById('energySlider').addEventListener('input', function() {
+  const val = this.value;
+  document.getElementById('energyDisplay').textContent = `${val} / 10`;
+  Storage.saveEnergyEntry(Storage.getActiveProfile(), { date: new Date().toISOString(), level: +val });
+});
+
+// Checkin modal
+document.getElementById('checkinBtn').addEventListener('click', () => {
+  document.getElementById('checkinModal').classList.add('open');
+});
+document.getElementById('closeModal').addEventListener('click', () => {
+  document.getElementById('checkinModal').classList.remove('open');
+});
+document.getElementById('checkinModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+
+document.querySelectorAll('input[name=ci]').forEach(cb => {
+  cb.addEventListener('change', updateCheckinScore);
+});
+
+function updateCheckinScore() {
+  const points = { water:10, workout:20, sleep:15, veggies:10, nosugar:10, walk:10, meds:5 };
+  const checked = [...document.querySelectorAll('input[name=ci]:checked')];
+  const total = checked.reduce((s, c) => s + (points[c.value] || 0), 0);
+  document.getElementById('checkinScore').textContent = total;
+}
+
+document.getElementById('saveCheckinBtn').addEventListener('click', () => {
+  const checked = [...document.querySelectorAll('input[name=ci]:checked')].map(c => c.value);
+  const points = { water:10, workout:20, sleep:15, veggies:10, nosugar:10, walk:10, meds:5 };
+  const total = checked.reduce((s, v) => s + (points[v] || 0), 0);
+  Storage.saveCheckin(Storage.getActiveProfile(), { items: checked, score: total, date: new Date().toISOString() });
+  document.getElementById('checkinModal').classList.remove('open');
+  showToast(`Чек-ин сохранён! +${total} очков 🌟`);
+});
+
+// Init
+setupProfileSwitcher(loadDashboard);
+loadDashboard();
+</script>
+</body>
+</html>

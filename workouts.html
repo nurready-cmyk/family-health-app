@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Тренировки — Здоровье семьи</title>
+  <meta name="theme-color" content="#6C63FF">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-top">
+    <div class="app-title"><span>🏋️</span> Тренировки</div>
+    <div class="profile-switcher">
+      <button class="profile-btn" data-profile="profile1">Я</button>
+      <button class="profile-btn" data-profile="profile2">Супруга</button>
+    </div>
+  </div>
+</header>
+
+<main class="main-content">
+
+  <!-- STATS -->
+  <div class="quick-status-grid" id="workoutStats">
+    <div class="status-item"><div class="status-icon">📅</div><div class="status-value" id="weekCount">0</div><div class="status-label">За неделю</div></div>
+    <div class="status-item"><div class="status-icon">🗓️</div><div class="status-value" id="monthCount">0</div><div class="status-label">За месяц</div></div>
+    <div class="status-item"><div class="status-icon">⏱️</div><div class="status-value" id="totalMins">0</div><div class="status-label">Мин за месяц</div></div>
+  </div>
+
+  <!-- MINI CALENDAR -->
+  <div class="card">
+    <div class="card-title mb-12">📆 Календарь тренировок</div>
+    <div class="mini-calendar" id="calHeader"></div>
+    <div class="mini-calendar mt-8" id="calGrid"></div>
+  </div>
+
+  <!-- ADD BUTTON -->
+  <button class="btn btn-primary btn-block mb-16" id="addWorkoutBtn">+ Добавить тренировку</button>
+
+  <!-- WORKOUTS LIST -->
+  <div id="workoutsList"></div>
+
+</main>
+
+<!-- ADD MODAL -->
+<div class="modal-overlay" id="workoutModal">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="workoutModalTitle">Новая тренировка</span>
+      <button class="modal-close" id="closeWorkoutModal">✕</button>
+    </div>
+    <form id="workoutForm">
+      <input type="hidden" id="workoutEditId">
+
+      <div class="form-group">
+        <label class="form-label">Дата</label>
+        <input type="date" class="form-control" id="workoutDate" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Тип тренировки</label>
+        <div class="workout-types" id="workoutTypeGrid">
+          <div class="workout-type-btn selected" data-type="strength"><span class="workout-type-icon">💪</span>Силовая</div>
+          <div class="workout-type-btn" data-type="cardio"><span class="workout-type-icon">🏃</span>Кардио</div>
+          <div class="workout-type-btn" data-type="yoga"><span class="workout-type-icon">🧘</span>Йога</div>
+          <div class="workout-type-btn" data-type="stretch"><span class="workout-type-icon">🤸</span>Растяжка</div>
+          <div class="workout-type-btn" data-type="swim"><span class="workout-type-icon">🏊</span>Плавание</div>
+          <div class="workout-type-btn" data-type="other"><span class="workout-type-icon">⚡</span>Другое</div>
+        </div>
+        <input type="hidden" id="workoutType" value="strength">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Длительность (мин)</label>
+          <input type="number" class="form-control" id="workoutDuration" min="1" max="300" placeholder="45" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Интенсивность</label>
+          <select class="form-control" id="workoutIntensity">
+            <option value="low">Низкая</option>
+            <option value="medium" selected>Средняя</option>
+            <option value="high">Высокая</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Упражнения / заметки</label>
+        <textarea class="form-control" id="workoutNotes" rows="3" placeholder="Например: приседания 3×10, жим лёжа 3×8..."></textarea>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block">💾 Сохранить</button>
+    </form>
+
+    <!-- Recovery tip -->
+    <div id="recoveryTip" style="display:none" class="alert alert-info mt-12"></div>
+  </div>
+</div>
+
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item"><div class="nav-icon">🏠</div><span>Главная</span></a>
+  <a href="analyses.html" class="nav-item"><div class="nav-icon">🩺</div><span>Анализы</span></a>
+  <a href="dynamics.html" class="nav-item"><div class="nav-icon">📈</div><span>Динамика</span></a>
+  <a href="workouts.html" class="nav-item active"><div class="nav-icon">🏋️</div><span>Тренировки</span></a>
+  <a href="nutrition.html" class="nav-item"><div class="nav-icon">🥗</div><span>Питание</span></a>
+  <a href="goals.html" class="nav-item"><div class="nav-icon">🎯</div><span>Цели</span></a>
+  <a href="profiles.html" class="nav-item"><div class="nav-icon">👤</div><span>Профиль</span></a>
+</nav>
+
+<script src="js/storage.js"></script>
+<script src="js/norms.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/utils.js"></script>
+<script>
+const WorkoutTypes = {
+  strength: { label: 'Силовая', icon: '💪' },
+  cardio:   { label: 'Кардио', icon: '🏃' },
+  yoga:     { label: 'Йога', icon: '🧘' },
+  stretch:  { label: 'Растяжка', icon: '🤸' },
+  swim:     { label: 'Плавание', icon: '🏊' },
+  other:    { label: 'Другое', icon: '⚡' }
+};
+
+const RecoveryTips = {
+  strength: '🔄 После силовой тренировки дайте мышцам 48 ч восстановления. Белок в течение 30 мин после тренировки ускорит восстановление!',
+  cardio:   '💧 После кардио важно восстановить электролиты. Выпейте воды с щепоткой соли или съешьте банан.',
+  yoga:     '☕ Йога отлично успокаивает нервную систему. Выпейте тёплый травяной чай и отдохните.',
+  stretch:  '🛁 Горячая ванна или душ после растяжки улучшат гибкость и расслабят мышцы.',
+  swim:     '🍌 Плавание — отличная кардио-нагрузка. Перекусите углеводами и белком для восстановления.',
+  other:    '😴 Полноценный сон — лучшее восстановление после любой нагрузки.'
+};
+
+// Workout type selector
+document.querySelectorAll('.workout-type-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.workout-type-btn').forEach(b => b.classList.remove('selected'));
+    this.classList.add('selected');
+    document.getElementById('workoutType').value = this.dataset.type;
+  });
+});
+
+function openWorkoutModal(workout = null) {
+  document.getElementById('recoveryTip').style.display = 'none';
+  if (workout) {
+    document.getElementById('workoutModalTitle').textContent = 'Редактировать';
+    document.getElementById('workoutEditId').value = workout.id;
+    document.getElementById('workoutDate').value = workout.date;
+    document.getElementById('workoutDuration').value = workout.duration;
+    document.getElementById('workoutIntensity').value = workout.intensity || 'medium';
+    document.getElementById('workoutNotes').value = workout.notes || '';
+    document.querySelectorAll('.workout-type-btn').forEach(b => {
+      b.classList.toggle('selected', b.dataset.type === workout.type);
+    });
+    document.getElementById('workoutType').value = workout.type;
+  } else {
+    document.getElementById('workoutModalTitle').textContent = 'Новая тренировка';
+    document.getElementById('workoutEditId').value = '';
+    document.getElementById('workoutDate').value = todayISO();
+    document.getElementById('workoutDuration').value = '';
+    document.getElementById('workoutNotes').value = '';
+    document.getElementById('workoutIntensity').value = 'medium';
+    document.querySelectorAll('.workout-type-btn').forEach((b,i) => b.classList.toggle('selected', i===0));
+    document.getElementById('workoutType').value = 'strength';
+  }
+  document.getElementById('workoutModal').classList.add('open');
+}
+
+document.getElementById('addWorkoutBtn').addEventListener('click', () => openWorkoutModal());
+document.getElementById('closeWorkoutModal').addEventListener('click', () => document.getElementById('workoutModal').classList.remove('open'));
+document.getElementById('workoutModal').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
+
+document.getElementById('workoutForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const profileId = Storage.getActiveProfile();
+  const type = document.getElementById('workoutType').value;
+  const workout = {
+    id: document.getElementById('workoutEditId').value || Date.now().toString(),
+    date: document.getElementById('workoutDate').value,
+    type,
+    duration: +document.getElementById('workoutDuration').value,
+    intensity: document.getElementById('workoutIntensity').value,
+    notes: document.getElementById('workoutNotes').value
+  };
+  Storage.saveWorkout(profileId, workout);
+
+  const tipEl = document.getElementById('recoveryTip');
+  tipEl.textContent = RecoveryTips[type] || RecoveryTips.other;
+  tipEl.style.display = 'block';
+  setTimeout(() => {
+    document.getElementById('workoutModal').classList.remove('open');
+    tipEl.style.display = 'none';
+    showToast('Тренировка сохранена! 💪');
+    renderAll();
+  }, 3000);
+});
+
+function renderCalendar(workouts) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+
+  const workoutDays = new Set(
+    workouts
+      .filter(w => { const d = new Date(w.date); return d.getMonth() === month && d.getFullYear() === year; })
+      .map(w => new Date(w.date).getDate())
+  );
+
+  document.getElementById('calHeader').innerHTML = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => `<div class="cal-header">${d}</div>`).join('');
+
+  let html = '';
+  const startDay = firstDay === 0 ? 6 : firstDay - 1;
+  for (let i = 0; i < startDay; i++) html += '<div></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isToday = d === now.getDate();
+    const hasW = workoutDays.has(d);
+    html += `<div class="cal-day ${hasW ? 'has-workout' : ''} ${isToday && !hasW ? 'today' : ''} empty">${d}</div>`;
+  }
+  document.getElementById('calGrid').innerHTML = html;
+}
+
+function renderWorkoutsList(workouts) {
+  const container = document.getElementById('workoutsList');
+  if (!workouts.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🏋️</div><div class="empty-state-text">Тренировок пока нет</div><div class="empty-state-sub">Добавьте первую тренировку!</div></div>`;
+    return;
+  }
+  container.innerHTML = workouts.slice(0, 20).map(w => {
+    const wt = WorkoutTypes[w.type] || WorkoutTypes.other;
+    const intLabel = { low:'Низкая', medium:'Средняя', high:'Высокая' }[w.intensity] || '';
+    return `<div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${wt.icon} ${wt.label}</div>
+          <div style="font-size:0.82rem;color:var(--text-secondary)">${formatDate(w.date)} · ${formatDuration(w.duration)} · ${intLabel}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline btn-sm" onclick='openWorkoutModal(${JSON.stringify(w).replace(/'/g,"&#39;")})'>✏️</button>
+          <button class="btn btn-sm" style="background:#FFF0F0;color:var(--danger)" onclick="deleteWorkout('${w.id}')">🗑️</button>
+        </div>
+      </div>
+      ${w.notes ? `<div style="font-size:0.85rem;color:var(--text-secondary);margin-top:4px">📝 ${w.notes}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderAll() {
+  const profileId = Storage.getActiveProfile();
+  const workouts = Storage.getWorkouts(profileId);
+  const now = Date.now();
+  const weekAgo = now - 7 * 86400000;
+  const monthAgo = now - 30 * 86400000;
+  document.getElementById('weekCount').textContent = workouts.filter(w => new Date(w.date) >= weekAgo).length;
+  const monthW = workouts.filter(w => new Date(w.date) >= monthAgo);
+  document.getElementById('monthCount').textContent = monthW.length;
+  document.getElementById('totalMins').textContent = monthW.reduce((s,w) => s + (w.duration||0), 0);
+  renderCalendar(workouts);
+  renderWorkoutsList(workouts);
+}
+
+function deleteWorkout(id) {
+  if (!confirm('Удалить тренировку?')) return;
+  Storage.deleteWorkout(Storage.getActiveProfile(), id);
+  showToast('Удалено', 'error');
+  renderAll();
+}
+
+setupProfileSwitcher(renderAll);
+renderAll();
+</script>
+</body>
+</html>

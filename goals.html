@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Цели — Здоровье семьи</title>
+  <meta name="theme-color" content="#6C63FF">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-top">
+    <div class="app-title"><span>🎯</span> Цели</div>
+    <div class="profile-switcher">
+      <button class="profile-btn" data-profile="profile1">Я</button>
+      <button class="profile-btn" data-profile="profile2">Супруга</button>
+    </div>
+  </div>
+</header>
+
+<main class="main-content">
+
+  <!-- SCORE -->
+  <div class="card" style="background:linear-gradient(135deg,#6C63FF,#8B5CF6);color:white;text-align:center;padding:24px">
+    <div style="font-size:0.9rem;opacity:0.85;margin-bottom:4px">Мои очки</div>
+    <div style="font-size:3.5rem;font-weight:800;line-height:1" id="totalScore">0</div>
+    <div style="font-size:0.85rem;opacity:0.8;margin-top:4px">🌟 звёзд накоплено</div>
+  </div>
+
+  <!-- BADGES -->
+  <div class="card">
+    <div class="card-title mb-12">🏆 Достижения</div>
+    <div class="badges-grid" id="badgesGrid">
+      <div class="badge-achievement" style="opacity:0.3"><div class="badge-icon">🏃</div><div class="badge-name">Первая тренировка</div></div>
+    </div>
+  </div>
+
+  <!-- DAILY CHECKIN -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">✅ Чек-ин сегодня</div>
+      <span class="badge badge-primary" id="todayScore">0 🌟</span>
+    </div>
+    <div id="dailyCheckinItems">
+      <label class="checkin-item"><input type="checkbox" name="dc" value="water"><span class="checkin-label">Выпил 2л воды</span><span class="checkin-points">+10 🌟</span></label>
+      <label class="checkin-item"><input type="checkbox" name="dc" value="workout"><span class="checkin-label">Потренировался</span><span class="checkin-points">+20 🌟</span></label>
+      <label class="checkin-item"><input type="checkbox" name="dc" value="sleep"><span class="checkin-label">Сон 7-8 часов</span><span class="checkin-points">+15 🌟</span></label>
+      <label class="checkin-item"><input type="checkbox" name="dc" value="veggies"><span class="checkin-label">Ел овощи/фрукты</span><span class="checkin-points">+10 🌟</span></label>
+      <label class="checkin-item"><input type="checkbox" name="dc" value="nosugar"><span class="checkin-label">Без сладкого</span><span class="checkin-points">+10 🌟</span></label>
+      <label class="checkin-item"><input type="checkbox" name="dc" value="walk"><span class="checkin-label">Прогулка на улице</span><span class="checkin-points">+10 🌟</span></label>
+      <label class="checkin-item"><input type="checkbox" name="dc" value="meds"><span class="checkin-label">Принял витамины</span><span class="checkin-points">+5 🌟</span></label>
+    </div>
+    <button class="btn btn-success btn-block mt-12" id="saveCheckinBtn">💾 Сохранить чек-ин</button>
+  </div>
+
+  <!-- GOALS -->
+  <button class="btn btn-primary btn-block mb-16" id="addGoalBtn">+ Добавить цель</button>
+  <div id="goalsList"></div>
+
+  <!-- WEEKLY REPORT -->
+  <div class="card" id="weeklyReport">
+    <div class="card-title mb-12">📊 Отчёт за неделю</div>
+    <div id="weeklyStats"></div>
+  </div>
+
+</main>
+
+<!-- ADD GOAL MODAL -->
+<div class="modal-overlay" id="goalModal">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="goalModalTitle">Новая цель</span>
+      <button class="modal-close" id="closeGoalModal">✕</button>
+    </div>
+    <form id="goalForm">
+      <input type="hidden" id="goalEditId">
+      <div class="form-group">
+        <label class="form-label">Название цели</label>
+        <input type="text" class="form-control" id="goalName" placeholder="Например: Нормализовать гемоглобин" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Показатель (необязательно)</label>
+        <select class="form-control" id="goalIndicator">
+          <option value="">— Выберите показатель —</option>
+          <option value="weight">Вес (кг)</option>
+          <option value="workouts">Тренировки (шт/мес)</option>
+          <option value="steps">Шаги в день</option>
+          <option value="water">Вода (л/день)</option>
+          <option value="sleep">Сон (часов)</option>
+          <option value="hemoglobin">Гемоглобин</option>
+          <option value="glucose">Глюкоза</option>
+          <option value="cholesterol">Холестерин</option>
+          <option value="vitaminD">Витамин D</option>
+          <option value="ferritin">Ферритин</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Текущее значение</label>
+          <input type="number" class="form-control" id="goalCurrent" placeholder="Сейчас" step="0.1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Целевое значение</label>
+          <input type="number" class="form-control" id="goalTarget" placeholder="Цель" step="0.1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Срок достижения</label>
+        <input type="date" class="form-control" id="goalDeadline">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Описание / план</label>
+        <textarea class="form-control" id="goalDesc" rows="2" placeholder="Как планируете достичь?"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">💾 Сохранить цель</button>
+    </form>
+  </div>
+</div>
+
+<!-- UPDATE PROGRESS MODAL -->
+<div class="modal-overlay" id="progressModal">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Обновить прогресс</span>
+      <button class="modal-close" id="closeProgressModal">✕</button>
+    </div>
+    <input type="hidden" id="progressGoalId">
+    <div class="form-group">
+      <label class="form-label" id="progressLabel">Текущее значение</label>
+      <input type="number" class="form-control" id="progressValue" step="0.1">
+    </div>
+    <button class="btn btn-primary btn-block" id="saveProgressBtn">Обновить</button>
+  </div>
+</div>
+
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item"><div class="nav-icon">🏠</div><span>Главная</span></a>
+  <a href="analyses.html" class="nav-item"><div class="nav-icon">🩺</div><span>Анализы</span></a>
+  <a href="dynamics.html" class="nav-item"><div class="nav-icon">📈</div><span>Динамика</span></a>
+  <a href="workouts.html" class="nav-item"><div class="nav-icon">🏋️</div><span>Тренировки</span></a>
+  <a href="nutrition.html" class="nav-item"><div class="nav-icon">🥗</div><span>Питание</span></a>
+  <a href="goals.html" class="nav-item active"><div class="nav-icon">🎯</div><span>Цели</span></a>
+  <a href="profiles.html" class="nav-item"><div class="nav-icon">👤</div><span>Профиль</span></a>
+</nav>
+
+<script src="js/storage.js"></script>
+<script src="js/norms.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/utils.js"></script>
+<script>
+const CHECKIN_POINTS = { water:10, workout:20, sleep:15, veggies:10, nosugar:10, walk:10, meds:5 };
+
+function calcCheckinScore(items) {
+  return (items || []).reduce((s, v) => s + (CHECKIN_POINTS[v] || 0), 0);
+}
+
+function loadCheckin() {
+  const profileId = Storage.getActiveProfile();
+  const checkins = Storage.getCheckins(profileId);
+  const today = checkins.find(c => new Date(c.date).toDateString() === new Date().toDateString());
+  if (today && today.items) {
+    today.items.forEach(v => {
+      const cb = document.querySelector(`input[name=dc][value="${v}"]`);
+      if (cb) cb.checked = true;
+    });
+    updateTodayScore();
+  }
+}
+
+function updateTodayScore() {
+  const items = [...document.querySelectorAll('input[name=dc]:checked')].map(c => c.value);
+  document.getElementById('todayScore').textContent = calcCheckinScore(items) + ' 🌟';
+}
+
+document.querySelectorAll('input[name=dc]').forEach(cb => cb.addEventListener('change', updateTodayScore));
+
+document.getElementById('saveCheckinBtn').addEventListener('click', () => {
+  const profileId = Storage.getActiveProfile();
+  const items = [...document.querySelectorAll('input[name=dc]:checked')].map(c => c.value);
+  const score = calcCheckinScore(items);
+  Storage.saveCheckin(profileId, { items, score, date: new Date().toISOString() });
+  showToast(`Чек-ин сохранён! +${score} очков 🌟`);
+  renderAll();
+});
+
+// Goal modal
+document.getElementById('addGoalBtn').addEventListener('click', () => {
+  document.getElementById('goalModalTitle').textContent = 'Новая цель';
+  document.getElementById('goalEditId').value = '';
+  document.getElementById('goalForm').reset();
+  document.getElementById('goalModal').classList.add('open');
+});
+document.getElementById('closeGoalModal').addEventListener('click', () => document.getElementById('goalModal').classList.remove('open'));
+document.getElementById('goalModal').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
+document.getElementById('closeProgressModal').addEventListener('click', () => document.getElementById('progressModal').classList.remove('open'));
+document.getElementById('progressModal').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
+
+document.getElementById('goalForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const profileId = Storage.getActiveProfile();
+  const goal = {
+    id: document.getElementById('goalEditId').value || Date.now().toString(),
+    name: document.getElementById('goalName').value,
+    indicator: document.getElementById('goalIndicator').value,
+    current: document.getElementById('goalCurrent').value,
+    target: document.getElementById('goalTarget').value,
+    deadline: document.getElementById('goalDeadline').value,
+    desc: document.getElementById('goalDesc').value,
+    createdAt: new Date().toISOString()
+  };
+  Storage.saveGoal(profileId, goal);
+  document.getElementById('goalModal').classList.remove('open');
+  showToast('Цель добавлена! 🎯');
+  renderAll();
+});
+
+function openProgressModal(goal) {
+  document.getElementById('progressGoalId').value = goal.id;
+  document.getElementById('progressLabel').textContent = `Текущее значение (цель: ${goal.target})`;
+  document.getElementById('progressValue').value = goal.current || '';
+  document.getElementById('progressModal').classList.add('open');
+}
+
+document.getElementById('saveProgressBtn').addEventListener('click', () => {
+  const profileId = Storage.getActiveProfile();
+  const goalId = document.getElementById('progressGoalId').value;
+  const goals = Storage.getGoals(profileId);
+  const goal = goals.find(g => g.id === goalId);
+  if (goal) {
+    goal.current = document.getElementById('progressValue').value;
+    Storage.saveGoal(profileId, goal);
+    document.getElementById('progressModal').classList.remove('open');
+    showToast('Прогресс обновлён! 📈');
+    renderAll();
+  }
+});
+
+function calcGoalPercent(goal) {
+  if (!goal.current || !goal.target) return 0;
+  const start = goal.startValue !== undefined ? +goal.startValue : 0;
+  const current = +goal.current;
+  const target = +goal.target;
+  if (target === start) return current >= target ? 100 : 0;
+  const pct = Math.abs((current - start) / (target - start)) * 100;
+  return Math.min(Math.round(pct), 100);
+}
+
+function renderGoals(goals) {
+  if (!goals.length) {
+    document.getElementById('goalsList').innerHTML = `<div class="empty-state"><div class="empty-state-icon">🎯</div><div class="empty-state-text">Целей пока нет</div><div class="empty-state-sub">Поставьте свою первую цель!</div></div>`;
+    return;
+  }
+  document.getElementById('goalsList').innerHTML = goals.map(g => {
+    const pct = calcGoalPercent(g);
+    const barClass = pct >= 80 ? 'good' : pct >= 40 ? 'warning' : 'primary';
+    const daysLeft = g.deadline ? Math.ceil((new Date(g.deadline) - Date.now()) / 86400000) : null;
+    return `<div class="goal-card">
+      <div class="goal-header">
+        <div>
+          <div class="goal-title">${g.name}</div>
+          ${g.indicator ? `<div style="font-size:0.8rem;color:var(--text-secondary)">${g.indicator}</div>` : ''}
+          ${daysLeft !== null ? `<div style="font-size:0.78rem;color:${daysLeft < 7 ? 'var(--danger)' : 'var(--text-secondary)'}">${daysLeft > 0 ? `⏳ ${daysLeft} дней осталось` : '⚠️ Срок истёк'}</div>` : ''}
+        </div>
+        <div class="goal-percent">${pct}%</div>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar ${barClass}" style="width:${pct}%"></div>
+      </div>
+      ${g.current && g.target ? `<div style="display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-secondary);margin-top:6px"><span>Сейчас: <strong>${g.current}</strong></span><span>Цель: <strong>${g.target}</strong></span></div>` : ''}
+      ${g.desc ? `<div style="font-size:0.82rem;color:var(--text-secondary);margin-top:8px">${g.desc}</div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-outline btn-sm" onclick='openProgressModal(${JSON.stringify(g).replace(/'/g,"&#39;")})'>📈 Прогресс</button>
+        <button class="btn btn-outline btn-sm" onclick='editGoal(${JSON.stringify(g).replace(/'/g,"&#39;")})'>✏️</button>
+        <button class="btn btn-sm" style="background:#FFF0F0;color:var(--danger)" onclick="deleteGoal('${g.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function editGoal(goal) {
+  document.getElementById('goalModalTitle').textContent = 'Редактировать цель';
+  document.getElementById('goalEditId').value = goal.id;
+  document.getElementById('goalName').value = goal.name;
+  document.getElementById('goalIndicator').value = goal.indicator || '';
+  document.getElementById('goalCurrent').value = goal.current || '';
+  document.getElementById('goalTarget').value = goal.target || '';
+  document.getElementById('goalDeadline').value = goal.deadline || '';
+  document.getElementById('goalDesc').value = goal.desc || '';
+  document.getElementById('goalModal').classList.add('open');
+}
+
+function deleteGoal(id) {
+  if (!confirm('Удалить эту цель?')) return;
+  Storage.deleteGoal(Storage.getActiveProfile(), id);
+  showToast('Удалено', 'error');
+  renderAll();
+}
+
+function renderWeeklyReport() {
+  const profileId = Storage.getActiveProfile();
+  const checkins = Storage.getCheckins(profileId);
+  const workouts = Storage.getWorkouts(profileId);
+  const weekAgo = Date.now() - 7 * 86400000;
+  const weekCheckins = checkins.filter(c => new Date(c.date) >= weekAgo);
+  const weekWorkouts = workouts.filter(w => new Date(w.date) >= weekAgo);
+  const totalScore = weekCheckins.reduce((s, c) => s + (c.score || 0), 0);
+  document.getElementById('weeklyStats').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center">
+      <div class="status-item"><div class="status-icon">📅</div><div class="status-value">${weekCheckins.length}</div><div class="status-label">Чек-инов</div></div>
+      <div class="status-item"><div class="status-icon">🏋️</div><div class="status-value">${weekWorkouts.length}</div><div class="status-label">Тренировок</div></div>
+      <div class="status-item"><div class="status-icon">🌟</div><div class="status-value">${totalScore}</div><div class="status-label">Очков</div></div>
+    </div>`;
+}
+
+function renderBadges() {
+  const profileId = Storage.getActiveProfile();
+  const userData = {
+    workouts: Storage.getWorkouts(profileId),
+    analyses: Storage.getAnalyses(profileId),
+    goals: Storage.getGoals(profileId),
+    checkins: Storage.getCheckins(profileId)
+  };
+  const badges = getBadges(userData);
+  const grid = document.getElementById('badgesGrid');
+  if (!badges.length) {
+    grid.innerHTML = '<div class="color-secondary fs-sm">Начните тренироваться, чтобы получить первый бейдж!</div>';
+    return;
+  }
+  grid.innerHTML = badges.map(b => `<div class="badge-achievement"><div class="badge-icon">${b.icon}</div><div class="badge-name">${b.name}</div></div>`).join('');
+}
+
+function renderTotalScore() {
+  const profileId = Storage.getActiveProfile();
+  const checkins = Storage.getCheckins(profileId);
+  const total = checkins.reduce((s, c) => s + (c.score || 0), 0);
+  document.getElementById('totalScore').textContent = total;
+}
+
+function renderAll() {
+  const profileId = Storage.getActiveProfile();
+  renderTotalScore();
+  renderBadges();
+  loadCheckin();
+  renderGoals(Storage.getGoals(profileId));
+  renderWeeklyReport();
+}
+
+setupProfileSwitcher(renderAll);
+renderAll();
+</script>
+</body>
+</html>

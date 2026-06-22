@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Питание — Здоровье семьи</title>
+  <meta name="theme-color" content="#6C63FF">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-top">
+    <div class="app-title"><span>🥗</span> Питание</div>
+    <div class="profile-switcher">
+      <button class="profile-btn" data-profile="profile1">Я</button>
+      <button class="profile-btn" data-profile="profile2">Супруга</button>
+    </div>
+  </div>
+</header>
+
+<main class="main-content">
+
+  <!-- TODAY MACROS -->
+  <div class="card" id="macroCard">
+    <div class="card-title mb-12">📊 Макронутриенты за сегодня</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center" id="macroGrid">
+      <div><div style="font-size:1.3rem;font-weight:800;color:var(--primary)" id="mCalories">0</div><div style="font-size:0.72rem;color:var(--text-secondary)">ккал</div></div>
+      <div><div style="font-size:1.3rem;font-weight:800;color:var(--accent)" id="mProtein">0</div><div style="font-size:0.72rem;color:var(--text-secondary)">белки г</div></div>
+      <div><div style="font-size:1.3rem;font-weight:800;color:var(--warning)" id="mFat">0</div><div style="font-size:0.72rem;color:var(--text-secondary)">жиры г</div></div>
+      <div><div style="font-size:1.3rem;font-weight:800;color:var(--success)" id="mCarbs">0</div><div style="font-size:0.72rem;color:var(--text-secondary)">углев. г</div></div>
+    </div>
+  </div>
+
+  <!-- ADD FOOD -->
+  <button class="btn btn-primary btn-block mb-16" id="addFoodBtn">+ Добавить приём пищи</button>
+
+  <!-- VITAMINS PROGRESS -->
+  <div class="card">
+    <div class="card-title mb-12">💊 Витамины и минералы (сегодня)</div>
+    <div id="vitaminsProgress"><div class="color-secondary fs-sm">Добавьте продукты для расчёта</div></div>
+  </div>
+
+  <!-- TODAY MEALS -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">🍽️ Приёмы пищи сегодня</div>
+      <button class="btn btn-outline btn-sm" id="historyToggle">История</button>
+    </div>
+    <div id="mealsList"></div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="card" id="historyCard" style="display:none">
+    <div class="card-title mb-12">📋 История питания</div>
+    <div id="historyList"></div>
+  </div>
+
+</main>
+
+<!-- ADD MEAL MODAL -->
+<div class="modal-overlay" id="mealModal">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Добавить приём пищи</span>
+      <button class="modal-close" id="closeMealModal">✕</button>
+    </div>
+    <form id="mealForm">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Дата</label>
+          <input type="date" class="form-control" id="mealDate" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Время</label>
+          <input type="time" class="form-control" id="mealTime">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Тип приёма пищи</label>
+        <select class="form-control" id="mealType">
+          <option value="Завтрак">🌅 Завтрак</option>
+          <option value="Обед">☀️ Обед</option>
+          <option value="Ужин">🌙 Ужин</option>
+          <option value="Перекус">🍎 Перекус</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Поиск продукта</label>
+        <input type="text" class="form-control" id="foodSearch" placeholder="Введите название продукта...">
+        <div id="foodSuggestions" style="background:white;border:2px solid var(--border);border-radius:10px;margin-top:4px;display:none;max-height:200px;overflow-y:auto"></div>
+      </div>
+
+      <div id="selectedFoods" style="margin-bottom:12px"></div>
+
+      <div class="form-group">
+        <label class="form-label">Или введите описание вручную</label>
+        <textarea class="form-control" id="mealNotes" rows="2" placeholder="Например: борщ домашний, кусок хлеба..."></textarea>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block">💾 Сохранить</button>
+    </form>
+  </div>
+</div>
+
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item"><div class="nav-icon">🏠</div><span>Главная</span></a>
+  <a href="analyses.html" class="nav-item"><div class="nav-icon">🩺</div><span>Анализы</span></a>
+  <a href="dynamics.html" class="nav-item"><div class="nav-icon">📈</div><span>Динамика</span></a>
+  <a href="workouts.html" class="nav-item"><div class="nav-icon">🏋️</div><span>Тренировки</span></a>
+  <a href="nutrition.html" class="nav-item active"><div class="nav-icon">🥗</div><span>Питание</span></a>
+  <a href="goals.html" class="nav-item"><div class="nav-icon">🎯</div><span>Цели</span></a>
+  <a href="profiles.html" class="nav-item"><div class="nav-icon">👤</div><span>Профиль</span></a>
+</nav>
+
+<script src="js/storage.js"></script>
+<script src="js/norms.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/nutrition-db.js"></script>
+<script src="js/utils.js"></script>
+<script>
+let selectedFoods = []; // [{foodName, grams}]
+let showHistory = false;
+
+// Food search
+document.getElementById('foodSearch').addEventListener('input', function() {
+  const q = this.value;
+  const sugg = document.getElementById('foodSuggestions');
+  if (q.length < 1) { sugg.style.display = 'none'; return; }
+  const results = searchFood(q).slice(0, 8);
+  if (!results.length) { sugg.style.display = 'none'; return; }
+  sugg.style.display = 'block';
+  sugg.innerHTML = results.map(f => `
+    <div class="food-item" style="padding:10px 12px;cursor:pointer" onclick="addFoodItem('${f.name.replace(/'/g,"\\'")}')">
+      <div>
+        <div class="food-name">${f.name}</div>
+        <div class="food-meta">${f.group} · ${f.per100g.calories} ккал/100г · Б:${f.per100g.protein}г Ж:${f.per100g.fat}г У:${f.per100g.carbs}г</div>
+      </div>
+    </div>`).join('');
+});
+
+function addFoodItem(name) {
+  selectedFoods.push({ foodName: name, grams: 100 });
+  document.getElementById('foodSuggestions').style.display = 'none';
+  document.getElementById('foodSearch').value = '';
+  renderSelectedFoods();
+}
+
+function renderSelectedFoods() {
+  document.getElementById('selectedFoods').innerHTML = selectedFoods.map((f, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="flex:1;font-size:0.88rem;font-weight:600">${f.foodName}</span>
+      <input type="number" value="${f.grams}" min="1" max="2000"
+        style="width:70px;padding:6px;border:2px solid var(--border);border-radius:8px;font-size:0.85rem"
+        onchange="selectedFoods[${i}].grams=+this.value" placeholder="г">
+      <span style="font-size:0.75rem;color:var(--text-secondary)">г</span>
+      <button type="button" onclick="removeFoodItem(${i})" style="background:none;border:none;color:var(--danger);font-size:1.1rem;cursor:pointer">✕</button>
+    </div>`).join('');
+}
+
+function removeFoodItem(i) {
+  selectedFoods.splice(i, 1);
+  renderSelectedFoods();
+}
+
+// Modal
+document.getElementById('addFoodBtn').addEventListener('click', () => {
+  selectedFoods = [];
+  renderSelectedFoods();
+  document.getElementById('mealDate').value = todayISO();
+  document.getElementById('mealTime').value = new Date().toTimeString().slice(0,5);
+  document.getElementById('mealNotes').value = '';
+  document.getElementById('mealModal').classList.add('open');
+});
+document.getElementById('closeMealModal').addEventListener('click', () => document.getElementById('mealModal').classList.remove('open'));
+document.getElementById('mealModal').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
+
+document.getElementById('mealForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const profileId = Storage.getActiveProfile();
+  const entry = {
+    date: document.getElementById('mealDate').value,
+    time: document.getElementById('mealTime').value,
+    type: document.getElementById('mealType').value,
+    foods: [...selectedFoods],
+    notes: document.getElementById('mealNotes').value
+  };
+  Storage.saveNutrition(profileId, entry);
+  document.getElementById('mealModal').classList.remove('open');
+  showToast('Приём пищи сохранён! 🥗');
+  renderAll();
+});
+
+document.getElementById('historyToggle').addEventListener('click', function() {
+  showHistory = !showHistory;
+  document.getElementById('historyCard').style.display = showHistory ? 'block' : 'none';
+  this.textContent = showHistory ? 'Скрыть' : 'История';
+  if (showHistory) renderHistory();
+});
+
+function renderVitamins(todayEntries) {
+  const allFoods = todayEntries.flatMap(e => e.foods || []);
+  if (!allFoods.length) return;
+  const { vitamins } = calculateDayNutrients(allFoods);
+  const keys = Object.keys(vitamins).sort((a,b) => (vitamins[b]/100) - (vitamins[a]/100)).slice(0, 10);
+  if (!keys.length) return;
+  document.getElementById('vitaminsProgress').innerHTML = keys.map(k => {
+    const pct = Math.min(Math.round(vitamins[k]), 150);
+    const barClass = pct >= 100 ? 'good' : pct >= 50 ? 'warning' : 'danger';
+    return `<div class="nutrient-row">
+      <div class="nutrient-name">${VitaminNames[k] || k}</div>
+      <div class="nutrient-bar-wrap"><div class="nutrient-bar ${barClass}" style="width:${Math.min(pct,100)}%"></div></div>
+      <div class="nutrient-value">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+function renderTodayMeals(todayEntries) {
+  const container = document.getElementById('mealsList');
+  if (!todayEntries.length) {
+    container.innerHTML = '<div class="color-secondary fs-sm text-center" style="padding:16px">Пока ничего не добавлено</div>';
+    return;
+  }
+  container.innerHTML = todayEntries.map(e => {
+    const macros = e.foods && e.foods.length ? calculateDayNutrients(e.foods).totals : null;
+    return `<div class="food-item">
+      <div>
+        <div class="food-name">${e.type} · ${e.time || ''}</div>
+        <div class="food-meta">${e.foods && e.foods.length ? e.foods.map(f=>`${f.foodName} (${f.grams}г)`).join(', ') : ''}${e.notes ? (e.foods && e.foods.length ? ' + ' : '') + e.notes : ''}</div>
+        ${macros ? `<div class="food-meta" style="color:var(--primary)">${Math.round(macros.calories)} ккал · Б:${Math.round(macros.protein)}г · Ж:${Math.round(macros.fat)}г · У:${Math.round(macros.carbs)}г</div>` : ''}
+      </div>
+      <button class="btn btn-sm" style="background:#FFF0F0;color:var(--danger)" onclick="deleteMeal('${e.id}')">🗑️</button>
+    </div>`;
+  }).join('');
+}
+
+function renderHistory() {
+  const profileId = Storage.getActiveProfile();
+  const all = Storage.getNutrition(profileId);
+  const todayStr = new Date().toDateString();
+  const past = all.filter(e => new Date(e.date).toDateString() !== todayStr).slice(0, 30);
+  document.getElementById('historyList').innerHTML = past.length
+    ? past.map(e => `<div class="food-item">
+        <div>
+          <div class="food-name">${e.type} · ${formatDate(e.date)}</div>
+          <div class="food-meta">${e.foods && e.foods.length ? e.foods.map(f=>`${f.foodName} (${f.grams}г)`).join(', ') : e.notes || '—'}</div>
+        </div>
+      </div>`).join('')
+    : '<div class="color-secondary fs-sm">История пуста</div>';
+}
+
+function deleteMeal(id) {
+  Storage.deleteNutrition(Storage.getActiveProfile(), id);
+  showToast('Удалено', 'error');
+  renderAll();
+}
+
+function renderAll() {
+  const profileId = Storage.getActiveProfile();
+  const all = Storage.getNutrition(profileId);
+  const todayStr = new Date().toDateString();
+  const todayEntries = all.filter(e => new Date(e.date).toDateString() === todayStr);
+
+  const allFoods = todayEntries.flatMap(e => e.foods || []);
+  const { totals } = calculateDayNutrients(allFoods);
+  document.getElementById('mCalories').textContent = Math.round(totals.calories);
+  document.getElementById('mProtein').textContent = Math.round(totals.protein);
+  document.getElementById('mFat').textContent = Math.round(totals.fat);
+  document.getElementById('mCarbs').textContent = Math.round(totals.carbs);
+
+  renderVitamins(todayEntries);
+  renderTodayMeals(todayEntries);
+}
+
+setupProfileSwitcher(renderAll);
+renderAll();
+</script>
+</body>
+</html>

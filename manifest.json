@@ -1,0 +1,35 @@
+{
+  "name": "Здоровье семьи",
+  "short_name": "Здоровье",
+  "description": "Приложение для отслеживания здоровья всей семьи",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#6C63FF",
+  "theme_color": "#6C63FF",
+  "orientation": "portrait",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236C63FF'/><text y='.9em' font-size='80' x='10'>❤️</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236C63FF'/><text y='.9em' font-size='80' x='10'>❤️</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Добавить анализ",
+      "url": "/analyses.html",
+      "description": "Быстро добавить результаты анализов"
+    },
+    {
+      "name": "Добавить тренировку",
+      "url": "/workouts.html",
+      "description": "Записать тренировку"
+    }
+  ]
+}

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Динамика — Здоровье семьи</title>
+  <meta name="theme-color" content="#6C63FF">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-top">
+    <div class="app-title"><span>📈</span> Динамика показателей</div>
+    <div class="profile-switcher">
+      <button class="profile-btn" data-profile="profile1">Я</button>
+      <button class="profile-btn" data-profile="profile2">Супруга</button>
+    </div>
+  </div>
+</header>
+
+<main class="main-content">
+
+  <div class="card">
+    <div class="form-group mb-8">
+      <label class="form-label">Показатель</label>
+      <select class="form-control" id="indicatorSelect"></select>
+    </div>
+    <div class="period-selector mt-8">
+      <button class="period-btn active" data-period="3m">3 мес</button>
+      <button class="period-btn" data-period="6m">6 мес</button>
+      <button class="period-btn" data-period="1y">1 год</button>
+      <button class="period-btn" data-period="all">Всё время</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="chart-container" style="height:260px">
+      <canvas id="dynamicsChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card" id="trendCard">
+    <div class="card-title mb-12">📊 Анализ тренда</div>
+    <div id="trendInfo"></div>
+  </div>
+
+  <div class="card" id="historyCard">
+    <div class="card-title mb-12">📋 История значений</div>
+    <div id="historyTable"></div>
+  </div>
+
+</main>
+
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item" data-page="dashboard"><div class="nav-icon">🏠</div><span>Главная</span></a>
+  <a href="analyses.html" class="nav-item" data-page="analyses"><div class="nav-icon">🩺</div><span>Анализы</span></a>
+  <a href="dynamics.html" class="nav-item active" data-page="dynamics"><div class="nav-icon">📈</div><span>Динамика</span></a>
+  <a href="workouts.html" class="nav-item" data-page="workouts"><div class="nav-icon">🏋️</div><span>Тренировки</span></a>
+  <a href="nutrition.html" class="nav-item" data-page="nutrition"><div class="nav-icon">🥗</div><span>Питание</span></a>
+  <a href="goals.html" class="nav-item" data-page="goals"><div class="nav-icon">🎯</div><span>Цели</span></a>
+  <a href="profiles.html" class="nav-item" data-page="profiles"><div class="nav-icon">👤</div><span>Профиль</span></a>
+</nav>
+
+<script src="js/storage.js"></script>
+<script src="js/norms.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/utils.js"></script>
+<script>
+let chartInstance = null;
+let currentPeriod = '3m';
+let currentIndicator = 'hemoglobin';
+
+function populateIndicators() {
+  const sel = document.getElementById('indicatorSelect');
+  sel.innerHTML = Object.keys(Norms).map(k => `<option value="${k}">${Norms[k].label}</option>`).join('');
+  sel.value = currentIndicator;
+}
+
+function renderChart() {
+  const profileId = Storage.getActiveProfile();
+  const profile = Storage.getProfile(profileId);
+  const analyses = Storage.getAnalyses(profileId);
+  const indicator = document.getElementById('indicatorSelect').value;
+  currentIndicator = indicator;
+  const norm = Norms[indicator];
+  const range = profile.gender === 'female' ? norm.female : norm.male;
+
+  // Filter by period
+  const filtered = filterByPeriod(analyses, currentPeriod, 'date')
+    .filter(a => a.values && a.values[indicator] !== undefined && a.values[indicator] !== '')
+    .reverse();
+
+  const labels = filtered.map(a => formatDateShort(a.date));
+  const values = filtered.map(a => +a.values[indicator]);
+
+  const ctx = document.getElementById('dynamicsChart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+
+  if (values.length === 0) {
+    ctx.canvas.parentElement.innerHTML = '<div class="empty-state" style="height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="empty-state-icon">📊</div><div class="empty-state-text">Нет данных за этот период</div></div>';
+    document.getElementById('trendInfo').innerHTML = '<div class="color-secondary">Добавьте анализы для отображения тренда</div>';
+    document.getElementById('historyTable').innerHTML = '';
+    return;
+  }
+
+  const pointColors = values.map(v => {
+    if (v < range[0]) return '#FF4757';
+    if (v > range[1]) return '#FF6584';
+    return '#43D39E';
+  });
+
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: norm.label,
+          data: values,
+          borderColor: '#6C63FF',
+          backgroundColor: 'rgba(108,99,255,0.08)',
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: pointColors,
+          pointRadius: 6,
+          pointHoverRadius: 9
+        },
+        {
+          label: `Норма min (${range[0]})`,
+          data: labels.map(() => range[0]),
+          borderColor: 'rgba(67,211,158,0.6)',
+          borderDash: [8,4],
+          pointRadius: 0,
+          fill: false,
+          borderWidth: 2
+        },
+        {
+          label: `Норма max (${range[1]})`,
+          data: labels.map(() => range[1]),
+          borderColor: 'rgba(67,211,158,0.6)',
+          borderDash: [8,4],
+          pointRadius: 0,
+          fill: '-1',
+          backgroundColor: 'rgba(67,211,158,0.07)',
+          borderWidth: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.parsed.y} ${norm.unit}`
+          }
+        }
+      },
+      scales: {
+        y: {
+          ticks: { font: { size: 11 } },
+          title: { display: true, text: norm.unit, font: { size: 11 } }
+        },
+        x: { ticks: { font: { size: 11 }, maxRotation: 35 } }
+      }
+    }
+  });
+
+  // Trend
+  const { trend, change } = calculateTrend(values);
+  const latest = values[values.length - 1];
+  const latestStatus = checkNorm(indicator, latest, profile.gender);
+  const statusColor = latestStatus?.status === 'normal' ? 'var(--success)' : 'var(--danger)';
+  const statusLabel = latestStatus?.status === 'normal' ? '✅ В норме' : latestStatus?.status === 'low' ? '⬇️ Ниже нормы' : '⬆️ Выше нормы';
+
+  document.getElementById('trendInfo').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="status-item">
+        <div class="status-icon">📍</div>
+        <div class="status-value" style="color:${statusColor}">${latest} ${norm.unit}</div>
+        <div class="status-label">Последнее значение</div>
+      </div>
+      <div class="status-item">
+        <div class="status-icon">${trend === 'rising' ? '📈' : trend === 'falling' ? '📉' : '➡️'}</div>
+        <div class="status-value" style="color:${trend === 'stable' ? 'var(--text-secondary)' : trend === 'rising' ? 'var(--accent)' : 'var(--success)'}">${getTrendLabel(trend)}</div>
+        <div class="status-label">${change ? Math.abs(change) + '%' : 'Изменение'}</div>
+      </div>
+    </div>
+    <div class="alert alert-info mt-12">
+      Норма: <strong>${range[0]} – ${range[1]} ${norm.unit}</strong> &nbsp;·&nbsp; <span style="color:${statusColor};font-weight:700">${statusLabel}</span>
+    </div>
+  `;
+
+  // History table
+  const rows = [...filtered].reverse().slice(0, 20).map(a => {
+    const v = +a.values[indicator];
+    const s = checkNorm(indicator, v, profile.gender);
+    const cls = s?.status === 'normal' ? 'val-normal' : s?.status === 'low' ? 'val-low' : 'val-high';
+    const icon = s?.status === 'normal' ? '✓' : s?.status === 'low' ? '↓' : '↑';
+    return `<tr><td>${formatDate(a.date)}</td><td class="${cls}">${v} ${norm.unit} ${icon}</td><td style="color:var(--text-secondary);font-size:0.8rem">${a.type}</td></tr>`;
+  }).join('');
+
+  document.getElementById('historyTable').innerHTML = rows
+    ? `<div style="overflow-x:auto"><table class="data-table"><thead><tr><th>Дата</th><th>Значение</th><th>Тип анализа</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    : '<div class="color-secondary">Нет данных</div>';
+}
+
+// Period buttons
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentPeriod = this.dataset.period;
+    renderChart();
+  });
+});
+
+document.getElementById('indicatorSelect').addEventListener('change', renderChart);
+
+function init() {
+  populateIndicators();
+  renderChart();
+}
+
+setupProfileSwitcher(init);
+init();
+</script>
+</body>
+</html>

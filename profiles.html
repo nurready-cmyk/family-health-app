@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Профили — Здоровье семьи</title>
+  <meta name="theme-color" content="#6C63FF">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-top">
+    <div class="app-title"><span>👤</span> Профили</div>
+    <div class="profile-switcher">
+      <button class="profile-btn" data-profile="profile1">Я</button>
+      <button class="profile-btn" data-profile="profile2">Супруга</button>
+    </div>
+  </div>
+</header>
+
+<main class="main-content">
+
+  <div id="profileCards"></div>
+
+  <!-- EDIT MODAL -->
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <div class="modal-title">
+        <span>Редактировать профиль</span>
+        <button class="modal-close" id="closeEditModal">✕</button>
+      </div>
+      <form id="editForm">
+        <input type="hidden" id="editProfileId">
+        <div class="form-group">
+          <label class="form-label">Имя</label>
+          <input type="text" class="form-control" id="editName" placeholder="Ваше имя" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Пол</label>
+          <select class="form-control" id="editGender">
+            <option value="male">Мужской</option>
+            <option value="female">Женский</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Год рождения</label>
+            <input type="number" class="form-control" id="editBirthYear" min="1940" max="2010" placeholder="1990">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Вес (кг)</label>
+            <input type="number" class="form-control" id="editWeight" min="30" max="300" placeholder="70" step="0.1">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Рост (см)</label>
+          <input type="number" class="form-control" id="editHeight" min="100" max="250" placeholder="170">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">💾 Сохранить</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- IMPORT MODAL -->
+  <div class="modal-overlay" id="importModal">
+    <div class="modal">
+      <div class="modal-title">
+        <span>Импорт данных</span>
+        <button class="modal-close" id="closeImportModal">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Выберите JSON-файл</label>
+        <input type="file" class="form-control" id="importFile" accept=".json">
+      </div>
+      <div class="alert alert-warning">⚠️ Импорт заменит ВСЕ текущие данные!</div>
+      <button class="btn btn-primary btn-block" id="doImportBtn">📥 Импортировать</button>
+    </div>
+  </div>
+
+</main>
+
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item"><div class="nav-icon">🏠</div><span>Главная</span></a>
+  <a href="analyses.html" class="nav-item"><div class="nav-icon">🩺</div><span>Анализы</span></a>
+  <a href="dynamics.html" class="nav-item"><div class="nav-icon">📈</div><span>Динамика</span></a>
+  <a href="workouts.html" class="nav-item"><div class="nav-icon">🏋️</div><span>Тренировки</span></a>
+  <a href="nutrition.html" class="nav-item"><div class="nav-icon">🥗</div><span>Питание</span></a>
+  <a href="goals.html" class="nav-item"><div class="nav-icon">🎯</div><span>Цели</span></a>
+  <a href="profiles.html" class="nav-item active"><div class="nav-icon">👤</div><span>Профиль</span></a>
+</nav>
+
+<script src="js/storage.js"></script>
+<script src="js/norms.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/utils.js"></script>
+<script>
+function renderProfiles() {
+  const ids = ['profile1', 'profile2'];
+  const activeId = Storage.getActiveProfile();
+  document.getElementById('profileCards').innerHTML = ids.map(id => {
+    const p = Storage.getProfile(id);
+    const analyses = Storage.getAnalyses(id);
+    const workouts = Storage.getWorkouts(id);
+    const goals = Storage.getGoals(id);
+    const age = p.birthYear ? new Date().getFullYear() - p.birthYear : null;
+    const initials = (p.name || 'П').charAt(0).toUpperCase();
+    const genderClass = p.gender === 'female' ? 'female' : 'male';
+    const genderLabel = p.gender === 'female' ? '♀ Женский' : '♂ Мужской';
+    const isActive = id === activeId;
+
+    return `<div class="card" style="${isActive ? 'border:2px solid var(--primary)' : ''}">
+      ${isActive ? '<div style="text-align:center;font-size:0.75rem;font-weight:700;color:var(--primary);margin-bottom:12px;letter-spacing:0.5px">✓ АКТИВНЫЙ ПРОФИЛЬ</div>' : ''}
+      <div style="text-align:center;margin-bottom:16px">
+        <div class="profile-avatar ${genderClass}">${initials}</div>
+        <div style="font-size:1.2rem;font-weight:800">${p.name || 'Профиль'}</div>
+        <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:4px">
+          ${genderLabel}${age ? ` · ${age} лет` : ''}${p.weight ? ` · ${p.weight} кг` : ''}${p.height ? ` · ${p.height} см` : ''}
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;text-align:center">
+        <div class="status-item"><div class="status-value">${analyses.length}</div><div class="status-label">Анализов</div></div>
+        <div class="status-item"><div class="status-value">${workouts.length}</div><div class="status-label">Тренировок</div></div>
+        <div class="status-item"><div class="status-value">${goals.length}</div><div class="status-label">Целей</div></div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${!isActive ? `<button class="btn btn-primary" onclick="switchToProfile('${id}')">🔄 Переключиться</button>` : ''}
+        <button class="btn btn-outline" onclick="openEdit('${id}')">✏️ Редактировать</button>
+        <button class="btn btn-outline" onclick="exportProfile('${id}')">📤 Экспорт данных</button>
+        <button class="btn btn-outline" onclick="openImport()">📥 Импорт данных</button>
+        <button class="btn btn-danger" onclick="clearProfile('${id}')">🗑️ Сбросить данные профиля</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function switchToProfile(id) {
+  Storage.setActiveProfile(id);
+  document.querySelectorAll('.profile-btn').forEach(b => b.classList.toggle('active', b.dataset.profile === id));
+  renderProfiles();
+  showToast('Профиль переключён');
+}
+
+function openEdit(id) {
+  const p = Storage.getProfile(id);
+  document.getElementById('editProfileId').value = id;
+  document.getElementById('editName').value = p.name || '';
+  document.getElementById('editGender').value = p.gender || 'male';
+  document.getElementById('editBirthYear').value = p.birthYear || '';
+  document.getElementById('editWeight').value = p.weight || '';
+  document.getElementById('editHeight').value = p.height || '';
+  document.getElementById('editModal').classList.add('open');
+}
+
+document.getElementById('closeEditModal').addEventListener('click', () => document.getElementById('editModal').classList.remove('open'));
+document.getElementById('editModal').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
+
+document.getElementById('editForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const id = document.getElementById('editProfileId').value;
+  const p = Storage.getProfile(id);
+  Storage.saveProfile(id, {
+    ...p,
+    name: document.getElementById('editName').value,
+    gender: document.getElementById('editGender').value,
+    birthYear: +document.getElementById('editBirthYear').value || null,
+    weight: +document.getElementById('editWeight').value || null,
+    height: +document.getElementById('editHeight').value || null
+  });
+  document.getElementById('editModal').classList.remove('open');
+  showToast('Профиль сохранён!');
+  renderProfiles();
+  // Update switcher labels
+  const p1 = Storage.getProfile('profile1');
+  const p2 = Storage.getProfile('profile2');
+  document.querySelectorAll('.profile-btn')[0].textContent = p1.name || 'Я';
+  document.querySelectorAll('.profile-btn')[1].textContent = p2.name || 'Супруга';
+});
+
+function exportProfile(id) {
+  const data = {
+    profile: Storage.getProfile(id),
+    analyses: Storage.getAnalyses(id),
+    workouts: Storage.getWorkouts(id),
+    nutrition: Storage.getNutrition(id),
+    goals: Storage.getGoals(id),
+    energy: Storage.getEnergyLog(id),
+    checkins: Storage.getCheckins(id)
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `health_profile_${id}_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  showToast('Данные экспортированы!');
+}
+
+function openImport() {
+  document.getElementById('importModal').classList.add('open');
+}
+document.getElementById('closeImportModal').addEventListener('click', () => document.getElementById('importModal').classList.remove('open'));
+document.getElementById('importModal').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
+
+document.getElementById('doImportBtn').addEventListener('click', () => {
+  const file = document.getElementById('importFile').files[0];
+  if (!file) { showToast('Выберите файл', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      const id = Storage.getActiveProfile();
+      // Support both full export and profile-specific export
+      if (data.profile) {
+        Storage.saveProfile(id, data.profile);
+        if (data.analyses) localStorage.setItem(`analyses_${id}`, JSON.stringify(data.analyses));
+        if (data.workouts) localStorage.setItem(`workouts_${id}`, JSON.stringify(data.workouts));
+        if (data.nutrition) localStorage.setItem(`nutrition_${id}`, JSON.stringify(data.nutrition));
+        if (data.goals) localStorage.setItem(`goals_${id}`, JSON.stringify(data.goals));
+        if (data.energy) localStorage.setItem(`energy_${id}`, JSON.stringify(data.energy));
+        if (data.checkins) localStorage.setItem(`checkins_${id}`, JSON.stringify(data.checkins));
+      } else {
+        Storage.importAllData(e.target.result);
+      }
+      document.getElementById('importModal').classList.remove('open');
+      showToast('Данные импортированы!');
+      renderProfiles();
+    } catch(err) {
+      showToast('Ошибка импорта: неверный формат', 'error');
+    }
+  };
+  reader.readAsText(file);
+});
+
+function clearProfile(id) {
+  const p = Storage.getProfile(id);
+  if (!confirm(`Сбросить ВСЕ данные профиля "${p.name || id}"? Это действие необратимо!`)) return;
+  Storage.clearProfileData(id);
+  showToast('Данные профиля удалены', 'error');
+  renderProfiles();
+}
+
+setupProfileSwitcher(renderProfiles);
+renderProfiles();
+</script>
+</body>
+</html>

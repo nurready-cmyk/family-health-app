@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Анализы — Здоровье семьи</title>
+  <meta name="theme-color" content="#6C63FF">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-top">
+    <div class="app-title"><span>🩺</span> Анализы крови</div>
+    <div class="profile-switcher">
+      <button class="profile-btn" data-profile="profile1">Я</button>
+      <button class="profile-btn" data-profile="profile2">Супруга</button>
+    </div>
+  </div>
+</header>
+
+<main class="main-content">
+
+  <button class="btn btn-primary btn-block mb-16" id="addAnalysisBtn">+ Добавить анализ</button>
+
+  <!-- HISTORY -->
+  <div id="analysesList"></div>
+
+</main>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="analysisModal">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="modalTitle">Новый анализ</span>
+      <button class="modal-close" id="closeAnalysisModal">✕</button>
+    </div>
+    <form id="analysisForm">
+      <input type="hidden" id="editId">
+      <div class="form-group">
+        <label class="form-label">Дата</label>
+        <input type="date" class="form-control" id="analysisDate" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Тип анализа</label>
+        <select class="form-control" id="analysisType">
+          <option value="Общий анализ крови">Общий анализ крови</option>
+          <option value="Биохимия">Биохимия</option>
+          <option value="Микроэлементы и витамины">Микроэлементы и витамины</option>
+          <option value="Гормоны">Гормоны</option>
+          <option value="Давление">Давление</option>
+          <option value="Полный">Полный (все показатели)</option>
+        </select>
+      </div>
+
+      <!-- Dynamic fields by group -->
+      <div id="analysisFields"></div>
+
+      <div class="form-group">
+        <label class="form-label">Прикрепить файл / фото</label>
+        <input type="file" class="form-control" id="analysisFile" accept="image/*,.pdf">
+        <div id="filePreview" style="margin-top:8px;font-size:0.8rem;color:var(--text-secondary)"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Заметки</label>
+        <textarea class="form-control" id="analysisNotes" rows="2" placeholder="Комментарии к анализу..."></textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button type="submit" class="btn btn-primary" style="flex:1">💾 Сохранить</button>
+        <button type="button" class="btn btn-outline" id="exportBtn">📥 Экспорт</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item" data-page="dashboard"><div class="nav-icon">🏠</div><span>Главная</span></a>
+  <a href="analyses.html" class="nav-item active" data-page="analyses"><div class="nav-icon">🩺</div><span>Анализы</span></a>
+  <a href="dynamics.html" class="nav-item" data-page="dynamics"><div class="nav-icon">📈</div><span>Динамика</span></a>
+  <a href="workouts.html" class="nav-item" data-page="workouts"><div class="nav-icon">🏋️</div><span>Тренировки</span></a>
+  <a href="nutrition.html" class="nav-item" data-page="nutrition"><div class="nav-icon">🥗</div><span>Питание</span></a>
+  <a href="goals.html" class="nav-item" data-page="goals"><div class="nav-icon">🎯</div><span>Цели</span></a>
+  <a href="profiles.html" class="nav-item" data-page="profiles"><div class="nav-icon">👤</div><span>Профиль</span></a>
+</nav>
+
+<script src="js/storage.js"></script>
+<script src="js/norms.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/utils.js"></script>
+<script>
+let fileDataURL = null;
+
+function getGroupKeys(type) {
+  if (type === 'Полный') return Object.keys(Norms);
+  return AnalysisGroups[type] || [];
+}
+
+function renderFields(type, currentValues = {}) {
+  const keys = getGroupKeys(type);
+  const container = document.getElementById('analysisFields');
+  container.innerHTML = '';
+  if (keys.length === 0) return;
+  keys.forEach(key => {
+    const norm = Norms[key];
+    if (!norm) return;
+    const div = document.createElement('div');
+    div.className = 'form-group';
+    div.innerHTML = `
+      <label class="form-label">${norm.label} <span style="color:var(--text-secondary);font-weight:400">(${norm.unit})</span></label>
+      <input type="number" class="form-control" id="field_${key}" name="${key}"
+        placeholder="${norm.label}" step="0.01" value="${currentValues[key] || ''}">
+    `;
+    container.appendChild(div);
+  });
+}
+
+document.getElementById('analysisType').addEventListener('change', function() {
+  renderFields(this.value);
+});
+
+// File input
+document.getElementById('analysisFile').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    fileDataURL = e.target.result;
+    document.getElementById('filePreview').textContent = `✓ ${file.name}`;
+  };
+  reader.readAsDataURL(file);
+});
+
+function openModal(analysis = null) {
+  fileDataURL = null;
+  document.getElementById('filePreview').textContent = '';
+  document.getElementById('analysisFile').value = '';
+  if (analysis) {
+    document.getElementById('modalTitle').textContent = 'Редактировать анализ';
+    document.getElementById('editId').value = analysis.id;
+    document.getElementById('analysisDate').value = analysis.date;
+    document.getElementById('analysisType').value = analysis.type;
+    document.getElementById('analysisNotes').value = analysis.notes || '';
+    renderFields(analysis.type, analysis.values || {});
+    if (analysis.fileRef) document.getElementById('filePreview').textContent = `✓ Файл прикреплён`;
+  } else {
+    document.getElementById('modalTitle').textContent = 'Новый анализ';
+    document.getElementById('editId').value = '';
+    document.getElementById('analysisDate').value = todayISO();
+    document.getElementById('analysisType').value = 'Общий анализ крови';
+    document.getElementById('analysisNotes').value = '';
+    renderFields('Общий анализ крови');
+  }
+  document.getElementById('analysisModal').classList.add('open');
+}
+
+document.getElementById('addAnalysisBtn').addEventListener('click', () => openModal());
+document.getElementById('closeAnalysisModal').addEventListener('click', () => document.getElementById('analysisModal').classList.remove('open'));
+document.getElementById('analysisModal').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
+
+document.getElementById('analysisForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const profileId = Storage.getActiveProfile();
+  const type = document.getElementById('analysisType').value;
+  const keys = getGroupKeys(type);
+  const values = {};
+  keys.forEach(k => {
+    const el = document.getElementById(`field_${k}`);
+    if (el && el.value !== '') values[k] = el.value;
+  });
+  const analysis = {
+    id: document.getElementById('editId').value || Date.now().toString(),
+    date: document.getElementById('analysisDate').value,
+    type,
+    values,
+    notes: document.getElementById('analysisNotes').value,
+    fileRef: fileDataURL || (document.getElementById('editId').value ? null : null)
+  };
+  Storage.saveAnalysis(profileId, analysis);
+  document.getElementById('analysisModal').classList.remove('open');
+  showToast('Анализ сохранён!');
+  renderAnalysesList();
+});
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const profileId = Storage.getActiveProfile();
+  const data = Storage.getAnalyses(profileId);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'analyses.json'; a.click();
+});
+
+function renderAnalysesList() {
+  const profileId = Storage.getActiveProfile();
+  const profile = Storage.getProfile(profileId);
+  const analyses = Storage.getAnalyses(profileId);
+  const container = document.getElementById('analysesList');
+
+  if (analyses.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🩺</div><div class="empty-state-text">Анализов пока нет</div><div class="empty-state-sub">Добавьте результаты анализов</div></div>`;
+    return;
+  }
+
+  container.innerHTML = analyses.map(a => {
+    const keys = Object.keys(a.values || {});
+    const statusRows = keys.slice(0, 6).map(k => {
+      const val = a.values[k];
+      if (!val) return '';
+      const norm = checkNorm(k, +val, profile.gender);
+      if (!norm) return '';
+      const cls = norm.status === 'normal' ? 'val-normal' : norm.status === 'low' ? 'val-low' : 'val-high';
+      const icon = norm.status === 'normal' ? '✓' : norm.status === 'low' ? '↓' : '↑';
+      return `<tr>
+        <td>${Norms[k].label}</td>
+        <td class="${cls}">${val} ${Norms[k].unit} ${icon}</td>
+        <td style="color:var(--text-secondary);font-size:0.78rem">${Norms[k][profile.gender === 'female' ? 'female' : 'male'].join(' – ')}</td>
+      </tr>`;
+    }).filter(Boolean).join('');
+
+    const abnormal = keys.filter(k => {
+      const v = a.values[k]; if (!v) return false;
+      return checkNorm(k, +v, profile.gender)?.status !== 'normal';
+    }).length;
+
+    return `<div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${a.type}</div>
+          <div style="font-size:0.82rem;color:var(--text-secondary)">${formatDate(a.date)}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${abnormal > 0 ? `<span class="badge badge-danger">${abnormal} откл.</span>` : '<span class="badge badge-success">В норме</span>'}
+          <button class="btn btn-outline btn-sm" onclick="openModal(${JSON.stringify(a).replace(/"/g, '&quot;')})">✏️</button>
+          <button class="btn btn-sm" style="background:#FFF0F0;color:var(--danger)" onclick="deleteAnalysis('${a.id}')">🗑️</button>
+        </div>
+      </div>
+      ${statusRows ? `<div style="overflow-x:auto"><table class="data-table"><thead><tr><th>Показатель</th><th>Значение</th><th>Норма</th></tr></thead><tbody>${statusRows}</tbody></table></div>` : ''}
+      ${keys.length > 6 ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:8px">...и ещё ${keys.length - 6} показателей</div>` : ''}
+      ${a.notes ? `<div style="margin-top:10px;font-size:0.85rem;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:10px">📝 ${a.notes}</div>` : ''}
+      ${a.fileRef ? `<div style="margin-top:8px"><a href="${a.fileRef}" target="_blank" class="btn btn-outline btn-sm">📎 Открыть файл</a></div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function deleteAnalysis(id) {
+  if (!confirm('Удалить этот анализ?')) return;
+  Storage.deleteAnalysis(Storage.getActiveProfile(), id);
+  showToast('Удалено', 'error');
+  renderAnalysesList();
+}
+
+setupProfileSwitcher(renderAnalysesList);
+renderAnalysesList();
+</script>
+</body>
+</html>
