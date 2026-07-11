@@ -24,6 +24,22 @@
 
   <div id="profileCards"></div>
 
+  <div class="card">
+    <div style="font-weight:800;margin-bottom:8px">📮 Перенос в Telegram-бота</div>
+    <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px">
+      Один раз отправляет анализы, тренировки, питание, цели и чек-ины обоих профилей в общую базу Google Sheets бота. Старые данные в этом приложении не удаляются.
+    </div>
+    <div class="form-group">
+      <label class="form-label">URL Web App бота</label>
+      <input type="text" class="form-control" id="migrationUrl" placeholder="https://script.google.com/macros/s/.../exec">
+    </div>
+    <div class="form-group">
+      <label class="form-label">MIGRATION_SECRET</label>
+      <input type="text" class="form-control" id="migrationSecret" placeholder="из Script Properties / логов setup()">
+    </div>
+    <button class="btn btn-primary btn-block" id="migrateBtn">📮 Отправить в Google Sheets</button>
+  </div>
+
   <!-- EDIT MODAL -->
   <div class="modal-overlay" id="editModal">
     <div class="modal">
@@ -242,6 +258,45 @@ function clearProfile(id) {
   showToast('Данные профиля удалены', 'error');
   renderProfiles();
 }
+
+document.getElementById('migrationUrl').value = localStorage.getItem('migrationWebAppUrl') || '';
+document.getElementById('migrationSecret').value = localStorage.getItem('migrationSecret') || '';
+
+document.getElementById('migrateBtn').addEventListener('click', async () => {
+  const url = document.getElementById('migrationUrl').value.trim();
+  const secret = document.getElementById('migrationSecret').value.trim();
+  if (!url || !secret) { showToast('Укажите URL и секрет', 'error'); return; }
+  localStorage.setItem('migrationWebAppUrl', url);
+  localStorage.setItem('migrationSecret', secret);
+
+  const data = {};
+  ['profile1', 'profile2'].forEach(id => {
+    data[id] = {
+      profile: Storage.getProfile(id),
+      analyses: Storage.getAnalyses(id),
+      workouts: Storage.getWorkouts(id),
+      nutrition: Storage.getNutrition(id),
+      goals: Storage.getGoals(id),
+      checkins: Storage.getCheckins(id)
+    };
+  });
+
+  showToast('Отправляю...');
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'migrate', secret, data })
+    });
+    const result = await res.json();
+    if (result.ok) {
+      showToast(`Готово! Анализов: ${result.counts.analyses}, тренировок: ${result.counts.workouts}, питания: ${result.counts.nutrition}, целей: ${result.counts.goals}, чек-инов: ${result.counts.checkins}`);
+    } else {
+      showToast('Ошибка: ' + result.error, 'error');
+    }
+  } catch (err) {
+    showToast('Не удалось отправить: ' + err.message, 'error');
+  }
+});
 
 setupProfileSwitcher(renderProfiles);
 renderProfiles();
