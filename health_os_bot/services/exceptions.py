@@ -12,3 +12,7 @@ class TranscriptionError(Exception):
 class ExtractionError(Exception):
     """Не удалось извлечь структурированные данные из текста."""
 
+
+class UploadError(Exception):
+    """Не удалось загрузить файл во внешнее хранилище (Google Drive)."""
+

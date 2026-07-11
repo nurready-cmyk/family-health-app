@@ -20,6 +20,7 @@ class Config:
     openai_api_key: str
     google_sheet_id: str
     google_credentials_path: str
+    google_drive_folder_id: str
     whisper_model_size: str
     bootstrap_admin_ids: tuple[int, ...]
 
@@ -39,6 +40,7 @@ def load_config() -> Config:
         openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
         google_sheet_id=os.environ["GOOGLE_SHEET_ID"],
         google_credentials_path=os.environ.get("GOOGLE_CREDENTIALS_PATH", "credentials.json"),
+        google_drive_folder_id=os.environ.get("GOOGLE_DRIVE_FOLDER_ID", ""),
         whisper_model_size=os.environ.get("WHISPER_MODEL_SIZE", "base"),
         bootstrap_admin_ids=_parse_admin_ids(os.environ.get("BOOTSTRAP_ADMIN_IDS", "")),
     )

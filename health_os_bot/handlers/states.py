@@ -37,3 +37,12 @@ class VoiceLogStates(StatesGroup):
     choosing_family_member = State()
     confirming = State()
 
+
+class PhotoLogStates(StatesGroup):
+    """Диалог после фото анализа: выбор члена семьи (если нужен) и
+    подтверждение саммари, распознанного GPT-4o (vision).
+    """
+
+    choosing_family_member = State()
+    confirming = State()
+

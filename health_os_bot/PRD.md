@@ -201,13 +201,18 @@ health_os_bot/
 │   ├── keyboards.py             ← инлайн-клавиатуры (пол, члены семьи, тип метрики)
 │   ├── middlewares.py            ← AccessMiddleware — резолвит AccessContext на каждый апдейт
 │   ├── registration.py            ← /start, bootstrap admin, /add_family_member
-│   └── logs.py                     ← /log — ручной ввод ежедневных метрик
+│   ├── logs.py                     ← /log — ручной ввод ежедневных метрик
+│   ├── voice.py                     ← голосовые сообщения + карточка подтверждения
+│   └── photo.py                      ← фото анализов + карточка подтверждения
 ├── core/                        ← Decision Engine: права доступа, бизнес-правила
 │   ├── __init__.py
 │   ├── exceptions.py             ← AccessDeniedError
 │   ├── access.py                  ← AccessService/AccessContext — кто ты и за кого можешь писать
 │   ├── family_members.py           ← FamilyMemberService — добавление членов семьи + bootstrap admin
-│   └── logs.py                      ← LogService — запись метрики с проверкой прав
+│   ├── logs.py                      ← LogService — запись метрики с проверкой прав
+│   ├── medical_data.py                ← MedicalDataService — запись мед. события с проверкой прав
+│   ├── voice.py                        ← VoiceLogService — оркестрация транскрипции + извлечения
+│   └── photo.py                         ← PhotoLogService — оркестрация загрузки в Drive + саммари
 ├── database/                    ← паттерн Репозиторий, единственный слой с gspread
 │   ├── __init__.py                ← build_repositories() — composition root
 │   ├── models.py                   ← доменные dataclass'ы + enum'ы Role/Gender/MetricType
@@ -215,13 +220,16 @@ health_os_bot/
 │   ├── sheets_client.py              ← GoogleSheetsClient + SheetRowStore (единственное место с gspread)
 │   ├── sheets_repositories.py          ← реализации интерфейсов поверх Google Sheets
 │   └── setup.py                        ← `python -m database.setup` — создание листов
-└── services/                    ← OpenAI (GPT) + faster-whisper, скрыты за интерфейсом
+└── services/                    ← OpenAI (GPT), faster-whisper и Google Drive, скрыты за интерфейсом
     ├── __init__.py
-    ├── models.py                  ← ExtractedMetric — результат извлечения, ещё не сохранённый
-    ├── exceptions.py               ← TranscriptionError, ExtractionError
-    ├── interfaces.py                ← абстрактные TranscriptionService, MetricExtractionService
+    ├── models.py                  ← ExtractedMetric, ExtractedMedicalSummary — результаты, ещё не сохранённые
+    ├── exceptions.py               ← TranscriptionError, ExtractionError, UploadError
+    ├── interfaces.py                ← абстрактные TranscriptionService, MetricExtractionService,
+    │                                   PhotoUploadService, ImageSummaryService
     ├── faster_whisper_transcription.py  ← FasterWhisperTranscriptionService (локально, бесплатно)
-    └── openai_text_extraction.py         ← OpenAIMetricExtractionService (gpt-4o-mini, платно)
+    ├── openai_text_extraction.py         ← OpenAIMetricExtractionService (gpt-4o-mini, платно)
+    ├── google_drive_upload.py             ← GoogleDriveUploadService (REST Drive API v3, бесплатно)
+    └── openai_image_summary.py             ← OpenAIImageSummaryService (gpt-4o vision, платно)
 ```
 
 ---
@@ -249,10 +257,10 @@ health_os_bot/
 - [x] Карточка подтверждения (Да/Исправить) перед записью (`handlers/voice.py`, состояние `VoiceLogStates.confirming`)
 - [x] `core/voice.py`: `VoiceLogService` — оркестрация транскрипции + извлечения без прямого сохранения в БД
 
-### Этап 4 — Фото
-- [ ] `services/`: загрузка в Google Drive
-- [ ] `services/`: обёртка над `gpt-4o` (vision) для саммари и отклонений
-- [ ] Запись в `Medical_Data` с `document_url`
+### Этап 4 — Фото (готово)
+- [x] `services/`: загрузка в Google Drive (`GoogleDriveUploadService`, REST Drive API v3, без тяжёлого `google-api-python-client`)
+- [x] `services/`: обёртка над `gpt-4o` (vision) для саммари и отклонений (`OpenAIImageSummaryService`)
+- [x] Запись в `Medical_Data` с `document_url` (`core/medical_data.py`, только после подтверждения — `handlers/photo.py`)
 
 ### Этап 5 — Рекомендации и личные правила
 - [ ] `core/`: rule-based рекомендации (можно перенести логику из `telegram-bot/Rules.gs`, `Norms.gs`, `NutritionDB.gs`)

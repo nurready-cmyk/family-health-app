@@ -6,7 +6,7 @@
 
 from abc import ABC, abstractmethod
 
-from services.models import ExtractedMetric
+from services.models import ExtractedMedicalSummary, ExtractedMetric
 
 
 class TranscriptionService(ABC):
@@ -23,4 +23,20 @@ class MetricExtractionService(ABC):
     @abstractmethod
     def extract_metric(self, transcript: str) -> ExtractedMetric:
         """Разобрать текст в ExtractedMetric или бросить ExtractionError."""
+
+
+class PhotoUploadService(ABC):
+    """Загрузка файла (скана анализа) во внешнее постоянное хранилище."""
+
+    @abstractmethod
+    def upload(self, file_bytes: bytes, filename: str, mime_type: str) -> str:
+        """Загрузить файл и вернуть ссылку на него (document_url)."""
+
+
+class ImageSummaryService(ABC):
+    """Саммари скана анализа/заключения по фото."""
+
+    @abstractmethod
+    def summarize(self, image_bytes: bytes, caption: str = "") -> ExtractedMedicalSummary:
+        """Сделать саммари изображения или бросить ExtractionError."""
 

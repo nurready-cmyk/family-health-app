@@ -17,11 +17,15 @@ from config import load_config
 from core.access import AccessService
 from core.family_members import FamilyMemberService
 from core.logs import LogService
+from core.medical_data import MedicalDataService
+from core.photo import PhotoLogService
 from core.voice import VoiceLogService
 from database import build_repositories
 from handlers import get_routers
 from handlers.middlewares import AccessMiddleware
 from services.faster_whisper_transcription import FasterWhisperTranscriptionService
+from services.google_drive_upload import GoogleDriveUploadService
+from services.openai_image_summary import OpenAIImageSummaryService
 from services.openai_text_extraction import OpenAIMetricExtractionService
 
 logging.basicConfig(
@@ -40,6 +44,7 @@ async def main() -> None:
     access_service = AccessService(repositories.users, repositories.family_members)
     family_member_service = FamilyMemberService(repositories.family_members, repositories.users)
     log_service = LogService(repositories.logs)
+    medical_data_service = MedicalDataService(repositories.medical_data)
 
     # faster-whisper грузит модель в память один раз — небыстрая операция,
     # поэтому сервис создаётся здесь, а не на каждое голосовое сообщение.
@@ -47,6 +52,12 @@ async def main() -> None:
     transcription_service = FasterWhisperTranscriptionService(config.whisper_model_size)
     metric_extraction_service = OpenAIMetricExtractionService(config.openai_api_key)
     voice_log_service = VoiceLogService(transcription_service, metric_extraction_service)
+
+    photo_upload_service = GoogleDriveUploadService(
+        config.google_credentials_path, config.google_drive_folder_id
+    )
+    image_summary_service = OpenAIImageSummaryService(config.openai_api_key)
+    photo_log_service = PhotoLogService(photo_upload_service, image_summary_service)
 
     bot = Bot(
         token=config.bot_token,
@@ -63,7 +74,9 @@ async def main() -> None:
     dispatcher["repositories"] = repositories
     dispatcher["family_member_service"] = family_member_service
     dispatcher["log_service"] = log_service
+    dispatcher["medical_data_service"] = medical_data_service
     dispatcher["voice_log_service"] = voice_log_service
+    dispatcher["photo_log_service"] = photo_log_service
 
     for router in get_routers():
         dispatcher.include_router(router)

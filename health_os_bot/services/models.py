@@ -16,3 +16,11 @@ class ExtractedMetric:
     value: str
     notes: str
 
+
+@dataclass(frozen=True)
+class ExtractedMedicalSummary:
+    """Результат саммари скана анализа моделью изображений (GPT-4o)."""
+
+    event_type: str
+    summary: str
+
