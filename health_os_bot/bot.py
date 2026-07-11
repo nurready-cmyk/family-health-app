@@ -69,13 +69,14 @@ async def main() -> None:
     )
     dispatcher = Dispatcher(storage=MemoryStorage())
 
-    access_middleware = AccessMiddleware(access_service)
+    access_middleware = AccessMiddleware()
     dispatcher.message.middleware(access_middleware)
     dispatcher.callback_query.middleware(access_middleware)
 
     # Внедряются в обработчики автоматически аргументами по имени (DI aiogram)
     dispatcher["config"] = config
     dispatcher["repositories"] = repositories
+    dispatcher["access_service"] = access_service
     dispatcher["family_member_service"] = family_member_service
     dispatcher["log_service"] = log_service
     dispatcher["medical_data_service"] = medical_data_service

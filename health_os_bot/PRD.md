@@ -203,8 +203,10 @@ health_os_bot/
 ├── bot.py                    ← точка входа: Bot/Dispatcher, DI, middleware, роутеры, polling
 ├── config.py                  ← загрузка .env в неизменяемый Config
 ├── requirements.txt
+├── requirements-dev.txt        ← + pytest/pytest-asyncio, не идёт в бой
+├── pytest.ini                   ← asyncio_mode=auto, pythonpath=.
 ├── .env.example
-├── .gitignore                 ← .env, credentials.json, venv, __pycache__
+├── .gitignore                 ← .env, credentials.json, venv, __pycache__, .pytest_cache
 ├── PRD.md                     ← этот документ
 ├── handlers/                   ← роутеры aiogram (только парсинг апдейта + вызов core/)
 │   ├── __init__.py             ← get_routers() — единая точка регистрации
@@ -247,6 +249,15 @@ health_os_bot/
     ├── openai_text_extraction.py         ← OpenAIMetricExtractionService (gpt-4o-mini, платно)
     ├── google_drive_upload.py             ← GoogleDriveUploadService (REST Drive API v3, бесплатно)
     └── openai_image_summary.py             ← OpenAIImageSummaryService (gpt-4o vision, платно)
+
+tests/                          ← pytest, без обращения к реальным Google/Telegram/OpenAI
+├── conftest.py                   ← фейковые репозитории, RecordingSession, make_dispatcher()
+├── test_norms.py, test_rules.py, test_analyses_parsing.py
+├── test_access.py, test_family_members.py, test_logs_service.py,
+│   test_medical_data_service.py, test_knowledge_base_service.py, test_analysis_service.py
+├── test_sheets_repositories.py, test_services_parsing.py
+└── test_handlers_registration.py, test_handlers_logs.py, test_handlers_voice.py,
+    test_handlers_photo.py, test_handlers_analyses.py
 ```
 
 ---
@@ -286,10 +297,23 @@ health_os_bot/
 - [x] `/analysis` — ручной ввод показателей текстом (парсинг портирован из `telegram-bot/Code.gs`), `/add_rule` — обучение личным правилам
 - [ ] `NutritionDB.gs` (база продуктов и витаминов) не перенесена — не входила в обязательный чеклист этапа, осталась в "не входит в MVP"
 
-### Этап 6 — Пост-MVP (не блокирует релиз)
-- [ ] Миграция `database/` на PostgreSQL
-- [ ] Замена OpenAI на локальную LLM в `services/`
-- [ ] Мультитенантность (несколько независимых семей)
+### Этап 6 — Автотесты (готово, вместо спекулятивного Пост-MVP)
+Три изначальных пункта Этапа 6 (Postgres, локальная LLM, мультитенантность) отложены — ни один не был нужен прямо сейчас, а строить их впрок означало бы то самое преждевременное усложнение, которого явно просили избегать. Вместо этого вся логика, проверенная вручную на Этапах 1–5, закреплена постоянным набором тестов:
+
+- [x] `pytest` + `pytest-asyncio`, отдельный `requirements-dev.txt` (не тянется в бой вместе с ботом)
+- [x] `tests/conftest.py` — фейковые репозитории поверх `database/interfaces.py`, `RecordingSession` (подмена транспорта `aiogram.Bot` без сети), фабрика `make_dispatcher()`
+- [x] Юнит-тесты `core/` (нормы, правила, парсинг анализов, права доступа во всех сервисах) и `services/`/`database/` (парсинг ответов GPT, сборка multipart-тела для Drive, `SheetRowStore`)
+- [x] Сквозные тесты `handlers/` через настоящий `aiogram.Dispatcher` — все сценарии: bootstrap admin, `/log`, `/analysis`, `/add_rule`, голос, фото, включая проверку, что личное правило показывается раньше общей рекомендации
+- [x] 84 теста, весь прогон < 1 секунды
+
+**Находки по пути (обе исправлены, не просто задокументированы):**
+- Запятая в `parse_analysis_text` — одновременно и разделитель показателей, и десятичный разделитель («глюкоза 5,2»); разбиение по любой запятой теряло дробную часть. Тот же баг унаследован `telegram-bot/Code.gs` — вынесено отдельной задачей.
+- `AccessMiddleware` захватывал `AccessService` через конструктор, а всё остальное внедрялось через `dispatcher["ключ"]` — несогласованность, которая всплыла именно при попытке протестировать несколько независимых сценариев в одном процессе (`aiogram.Router` нельзя переподключить к другому `Dispatcher`). Переведено на единый DI-механизм через `workflow_data` — заодно упростило и продовое связывание в `bot.py`.
+
+### Отложено (не блокирует релиз, будет по мере реальной необходимости)
+- [ ] Миграция `database/` на PostgreSQL — когда Google Sheets станет узким местом
+- [ ] Замена OpenAI на локальную LLM в `services/` — когда потребуется убрать даже минимальные расходы
+- [ ] Мультитенантность (несколько независимых семей) — когда появится конкретный запрос продавать это как SaaS
 
 ---
 

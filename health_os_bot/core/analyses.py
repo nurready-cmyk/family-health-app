@@ -35,7 +35,10 @@ def parse_analysis_text(text: str) -> dict[str, float]:
         results["diastolic"] = float(bp_match.group(2))
         remaining = remaining.replace(bp_match.group(0), "")
 
-    for part in re.split(r"[,;\n]", remaining):
+    # Запятая — и разделитель показателей, и десятичный разделитель
+    # ("глюкоза 5,2"). Не разбиваем по запятой, если сразу после неё цифра —
+    # тогда это, скорее всего, часть дробного числа, а не новый показатель.
+    for part in re.split(r"[;\n]|,(?!\d)", remaining):
         part = part.strip()
         if not part:
             continue
