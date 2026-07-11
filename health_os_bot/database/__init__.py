@@ -7,6 +7,10 @@ PostgreSQL) идёт только через репозитории, объяв�
 build_repositories() — единственная точка входа для остального приложения:
 core/ и handlers/ получают набор репозиториев и работают только с типами из
 database.interfaces, не зная, что за ними стоит Google Sheets.
+
+Импорт gspread-реализации намеренно сделан внутри build_repositories(), а не
+на уровне модуля: простой `from database.interfaces import ...` (то, чем
+пользуются core/ и тесты) не должен требовать установленного gspread.
 """
 
 from dataclasses import dataclass
@@ -17,14 +21,6 @@ from database.interfaces import (
     LogsRepository,
     MedicalDataRepository,
     UsersRepository,
-)
-from database.sheets_client import GoogleSheetsClient
-from database.sheets_repositories import (
-    FamilyMembersSheetsRepository,
-    KnowledgeBaseSheetsRepository,
-    LogsSheetsRepository,
-    MedicalDataSheetsRepository,
-    UsersSheetsRepository,
 )
 
 
@@ -41,6 +37,15 @@ class Repositories:
 
 def build_repositories(credentials_path: str, spreadsheet_id: str) -> Repositories:
     """Собрать все репозитории поверх одного подключения к Google Sheets."""
+    from database.sheets_client import GoogleSheetsClient
+    from database.sheets_repositories import (
+        FamilyMembersSheetsRepository,
+        KnowledgeBaseSheetsRepository,
+        LogsSheetsRepository,
+        MedicalDataSheetsRepository,
+        UsersSheetsRepository,
+    )
+
     client = GoogleSheetsClient(credentials_path, spreadsheet_id)
     return Repositories(
         family_members=FamilyMembersSheetsRepository(client),

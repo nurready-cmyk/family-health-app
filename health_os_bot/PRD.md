@@ -215,8 +215,13 @@ health_os_bot/
 │   ├── sheets_client.py              ← GoogleSheetsClient + SheetRowStore (единственное место с gspread)
 │   ├── sheets_repositories.py          ← реализации интерфейсов поверх Google Sheets
 │   └── setup.py                        ← `python -m database.setup` — создание листов
-└── services/                    ← OpenAI (GPT) + faster-whisper, скрыты за интерфейсом (Этап 3)
-    └── __init__.py
+└── services/                    ← OpenAI (GPT) + faster-whisper, скрыты за интерфейсом
+    ├── __init__.py
+    ├── models.py                  ← ExtractedMetric — результат извлечения, ещё не сохранённый
+    ├── exceptions.py               ← TranscriptionError, ExtractionError
+    ├── interfaces.py                ← абстрактные TranscriptionService, MetricExtractionService
+    ├── faster_whisper_transcription.py  ← FasterWhisperTranscriptionService (локально, бесплатно)
+    └── openai_text_extraction.py         ← OpenAIMetricExtractionService (gpt-4o-mini, платно)
 ```
 
 ---
@@ -238,10 +243,11 @@ health_os_bot/
 - [x] Команда «Добавить члена семьи» (только `admin` — `/add_family_member` в `handlers/registration.py`)
 - [x] Регистрация первого администратора через `BOOTSTRAP_ADMIN_IDS` (`/start`, `core/family_members.register_bootstrap_admin`)
 
-### Этап 3 — Голос
-- [ ] `services/`: обёртка над `faster-whisper` (локальная транскрипция)
-- [ ] `services/`: обёртка над `gpt-4o-mini` для извлечения структуры
-- [ ] Карточка подтверждения (Да/Исправить) перед записью
+### Этап 3 — Голос (готово)
+- [x] `services/`: обёртка над `faster-whisper` (локальная транскрипция — `FasterWhisperTranscriptionService`)
+- [x] `services/`: обёртка над `gpt-4o-mini` для извлечения структуры (`OpenAIMetricExtractionService`, JSON-режим)
+- [x] Карточка подтверждения (Да/Исправить) перед записью (`handlers/voice.py`, состояние `VoiceLogStates.confirming`)
+- [x] `core/voice.py`: `VoiceLogService` — оркестрация транскрипции + извлечения без прямого сохранения в БД
 
 ### Этап 4 — Фото
 - [ ] `services/`: загрузка в Google Drive

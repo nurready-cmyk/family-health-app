@@ -53,7 +53,7 @@ async def handle_start(
     await state.set_state(BootstrapAdminStates.waiting_for_name)
 
 
-@router.message(BootstrapAdminStates.waiting_for_name)
+@router.message(BootstrapAdminStates.waiting_for_name, F.text)
 async def bootstrap_name_entered(message: Message, state: FSMContext) -> None:
     await state.update_data(name=message.text.strip())
     await message.answer("Укажите пол:", reply_markup=gender_keyboard())
@@ -69,7 +69,7 @@ async def bootstrap_gender_chosen(callback: CallbackQuery, state: FSMContext) ->
     await state.set_state(BootstrapAdminStates.waiting_for_birth_year)
 
 
-@router.message(BootstrapAdminStates.waiting_for_birth_year)
+@router.message(BootstrapAdminStates.waiting_for_birth_year, F.text)
 async def bootstrap_birth_year_entered(
     message: Message,
     state: FSMContext,
@@ -112,7 +112,7 @@ async def start_add_family_member(
     await state.set_state(AddFamilyMemberStates.waiting_for_name)
 
 
-@router.message(AddFamilyMemberStates.waiting_for_name)
+@router.message(AddFamilyMemberStates.waiting_for_name, F.text)
 async def add_family_member_name_entered(message: Message, state: FSMContext) -> None:
     await state.update_data(name=message.text.strip())
     await message.answer("Укажите пол:", reply_markup=gender_keyboard())
@@ -128,7 +128,7 @@ async def add_family_member_gender_chosen(callback: CallbackQuery, state: FSMCon
     await state.set_state(AddFamilyMemberStates.waiting_for_birth_year)
 
 
-@router.message(AddFamilyMemberStates.waiting_for_birth_year)
+@router.message(AddFamilyMemberStates.waiting_for_birth_year, F.text)
 async def add_family_member_birth_year_entered(message: Message, state: FSMContext) -> None:
     birth_year = _parse_birth_year(message.text)
     if birth_year is None:
@@ -143,7 +143,7 @@ async def add_family_member_birth_year_entered(message: Message, state: FSMConte
     await state.set_state(AddFamilyMemberStates.waiting_for_telegram_id)
 
 
-@router.message(AddFamilyMemberStates.waiting_for_telegram_id)
+@router.message(AddFamilyMemberStates.waiting_for_telegram_id, F.text)
 async def add_family_member_telegram_id_entered(
     message: Message,
     state: FSMContext,

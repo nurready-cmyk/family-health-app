@@ -66,14 +66,14 @@ async def metric_type_chosen(callback: CallbackQuery, state: FSMContext) -> None
     await state.set_state(LogMetricStates.entering_value)
 
 
-@router.message(LogMetricStates.entering_value)
+@router.message(LogMetricStates.entering_value, F.text)
 async def value_entered(message: Message, state: FSMContext) -> None:
     await state.update_data(value=message.text.strip())
     await message.answer("Заметка (или отправьте «-», если нет):")
     await state.set_state(LogMetricStates.entering_notes)
 
 
-@router.message(LogMetricStates.entering_notes)
+@router.message(LogMetricStates.entering_notes, F.text)
 async def notes_entered(
     message: Message,
     state: FSMContext,

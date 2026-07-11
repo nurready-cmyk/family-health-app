@@ -28,3 +28,12 @@ class LogMetricStates(StatesGroup):
     entering_value = State()
     entering_notes = State()
 
+
+class VoiceLogStates(StatesGroup):
+    """Диалог после голосового сообщения: выбор члена семьи (если нужен)
+    и подтверждение метрики, распознанной faster-whisper + GPT-4o-mini.
+    """
+
+    choosing_family_member = State()
+    confirming = State()
+
