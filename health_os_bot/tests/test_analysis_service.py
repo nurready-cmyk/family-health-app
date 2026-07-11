@@ -73,3 +73,42 @@ def test_general_recommendations_reflect_latest_known_values_not_just_current_me
 
     assert any(rule.id == "hb_low" for rule in result.general_recommendations)
 
+
+def test_get_current_status_without_any_analyses_returns_empty_result(service, access_service, mom):
+    context = access_service.resolve(222)
+    result = service.get_current_status(context, mom.id)
+
+    assert result.readings == []
+    assert result.personal_rules == []
+    assert result.general_recommendations == []
+
+
+def test_get_current_status_reflects_last_saved_values(service, access_service, mom):
+    context = access_service.resolve(222)
+    service.record_analysis(context, mom.id, {"hemoglobin": 100.0}, "2026-07-01")
+
+    result = service.get_current_status(context, mom.id)
+
+    assert len(result.readings) == 1
+    assert result.readings[0].norm_check.status == "low"
+    assert any(rule.id == "hb_low" for rule in result.general_recommendations)
+
+
+def test_get_current_status_includes_matching_personal_rule(
+    service, access_service, mom, knowledge_base_service
+):
+    context = access_service.resolve(222)
+    knowledge_base_service.add_rule(context, mom.id, "если гемоглобин низкий, помогает гранат")
+    service.record_analysis(context, mom.id, {"hemoglobin": 100.0}, "2026-07-01")
+
+    result = service.get_current_status(context, mom.id)
+
+    assert len(result.personal_rules) == 1
+    assert "гранат" in result.personal_rules[0].rule_text
+
+
+def test_get_current_status_denies_access_to_someone_elses_data(service, access_service, dad, mom):
+    context = access_service.resolve(222)
+    with pytest.raises(AccessDeniedError):
+        service.get_current_status(context, dad.id)
+

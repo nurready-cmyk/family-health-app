@@ -60,3 +60,9 @@ class AddRuleStates(StatesGroup):
     choosing_family_member = State()
     entering_rule_text = State()
 
+
+class ReportStates(StatesGroup):
+    """Диалог просмотра текущих отклонений и рекомендаций (/report)."""
+
+    choosing_family_member = State()
+

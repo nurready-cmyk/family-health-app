@@ -182,6 +182,9 @@ Telegram update
 ### 6.7 Личные правила (`Knowledge_Base`)
 Пользователь может «обучить» бота своим правилом (аналогично `PersonalRules` в `telegram-bot/`): бот сначала проверяет `Knowledge_Base` конкретного `family_member_id`, и только потом — общую базу рекомендаций.
 
+### 6.8 Просмотр текущего статуса (`/report`)
+`/analysis` показывает отклонения и рекомендации только в момент ввода — чтобы посмотреть текущую картину в любой другой момент без повторного ввода, `/report` читает последние сохранённые значения (`AnalysesRepository.get_latest_values`) и строит тот же набор: отклонения от нормы, личные правила, общие рекомендации.
+
 ---
 
 ## 7. AI/LLM-интеграции и их стоимость
@@ -217,7 +220,7 @@ health_os_bot/
 │   ├── logs.py                     ← /log — ручной ввод ежедневных метрик
 │   ├── voice.py                     ← голосовые сообщения + карточка подтверждения
 │   ├── photo.py                      ← фото анализов + карточка подтверждения
-│   ├── analyses.py                    ← /analysis — ввод показателей текстом
+│   ├── analyses.py                    ← /analysis (ввод) и /report (текущий статус без ввода)
 │   └── knowledge_base.py                ← /add_rule — обучение личным правилам
 ├── core/                        ← Decision Engine: права доступа, бизнес-правила
 │   ├── __init__.py
@@ -231,7 +234,8 @@ health_os_bot/
 │   ├── norms.py                          ← нормы показателей по полу (портировано из Norms.gs)
 │   ├── rules.py                           ← rule-based рекомендации (портировано из Rules.gs)
 │   ├── knowledge_base.py                   ← KnowledgeBaseService — личные правила, проверяются первыми
-│   └── analyses.py                          ← AnalysisService — парсинг текста + сборка рекомендаций
+│   └── analyses.py                          ← AnalysisService — парсинг текста, сохранение и просмотр
+│                                                статуса (record_analysis / get_current_status)
 ├── database/                    ← паттерн Репозиторий, единственный слой с gspread
 │   ├── __init__.py                ← build_repositories() — composition root
 │   ├── models.py                   ← доменные dataclass'ы + enum'ы Role/Gender/MetricType

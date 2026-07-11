@@ -1,7 +1,12 @@
-"""Ручной ввод показателей анализов: /analysis → кто → показатели →
-рекомендации (личные правила впереди общих). Без LLM — тот же принцип
-"ручного" ввода, что и в /log (core/analyses.py делает всю разборку и сборку
-рекомендаций, этот роутер только оркестрирует диалог).
+"""Ручной ввод показателей анализов и просмотр текущего статуса.
+
+/analysis → кто → показатели → рекомендации (личные правила впереди общих).
+/report   → кто → те же отклонения и рекомендации, но без нового ввода —
+            по последним известным показателям (core.analyses.get_current_status).
+
+Без LLM — тот же принцип "ручного" ввода, что и в /log (core/analyses.py
+делает всю разборку и сборку рекомендаций, этот роутер только оркестрирует
+диалог).
 """
 
 from datetime import date
@@ -18,7 +23,7 @@ from core.exceptions import AccessDeniedError
 from core.norms import NORMS
 from core.rules import Rule
 from handlers.keyboards import family_members_keyboard
-from handlers.states import AnalysisStates
+from handlers.states import AnalysisStates, ReportStates
 
 router = Router(name="analyses")
 
@@ -93,10 +98,64 @@ async def indicators_entered(
         return
 
     await state.clear()
-    await message.answer(_format_result(result))
+    await message.answer("📊 Записал:\n" + _format_readings(result) + _format_recommendations_block(result))
 
 
-def _format_result(result: AnalysisResult) -> str:
+@router.message(Command("report"))
+async def start_report(
+    message: Message,
+    access: Optional[AccessContext],
+    state: FSMContext,
+    analysis_service: AnalysisService,
+) -> None:
+    if access is None:
+        await message.answer("Вы не зарегистрированы в Health OS.")
+        return
+    if not access.allowed_family_members:
+        await message.answer("Нет доступных членов семьи.")
+        return
+
+    if len(access.allowed_family_members) == 1:
+        await _send_report(message, access, access.allowed_family_members[0].id, analysis_service)
+        return
+
+    await message.answer(
+        "За кого посмотреть отчёт?",
+        reply_markup=family_members_keyboard(access.allowed_family_members),
+    )
+    await state.set_state(ReportStates.choosing_family_member)
+
+
+@router.callback_query(ReportStates.choosing_family_member, F.data.startswith("family_member:"))
+async def report_family_member_chosen(
+    callback: CallbackQuery,
+    state: FSMContext,
+    access: AccessContext,
+    analysis_service: AnalysisService,
+) -> None:
+    family_member_id = callback.data.split(":", 1)[1]
+    await callback.answer()
+    await state.clear()
+    await _send_report(callback.message, access, family_member_id, analysis_service)
+
+
+async def _send_report(
+    message: Message, access: AccessContext, family_member_id: str, analysis_service: AnalysisService
+) -> None:
+    try:
+        result = analysis_service.get_current_status(access, family_member_id)
+    except AccessDeniedError as error:
+        await message.answer(str(error))
+        return
+
+    if not result.readings:
+        await message.answer("Нет сохранённых анализов. Введите через /analysis.")
+        return
+
+    await message.answer("📋 Текущие показатели:\n" + _format_readings(result) + _format_recommendations_block(result))
+
+
+def _format_readings(result: AnalysisResult) -> str:
     lines = []
     for reading in result.readings:
         norm = NORMS.get(reading.indicator_key)
@@ -104,20 +163,20 @@ def _format_result(result: AnalysisResult) -> str:
         unit = norm.unit if norm else ""
         status_label = _STATUS_LABELS.get(reading.norm_check.status, "") if reading.norm_check else ""
         lines.append(f"• {label}: <b>{reading.value}</b> {unit} — {status_label}")
+    return "\n".join(lines)
 
-    reply = "📊 Записал:\n" + "\n".join(lines)
 
+def _format_recommendations_block(result: AnalysisResult) -> str:
+    block = ""
     if result.personal_rules:
-        reply += "\n\n🧠 Из ваших личных заметок:\n" + "\n".join(
+        block += "\n\n🧠 Из ваших личных заметок:\n" + "\n".join(
             f"• {rule.rule_text}" for rule in result.personal_rules
         )
-
     if result.general_recommendations:
-        reply += "\n\n💡 Рекомендации:\n" + "\n\n".join(
+        block += "\n\n💡 Рекомендации:\n" + "\n\n".join(
             _format_recommendation(rule) for rule in result.general_recommendations
         )
-
-    return reply
+    return block
 
 
 def _format_recommendation(rule: Rule) -> str:

@@ -71,3 +71,48 @@ async def test_wife_cannot_add_rule_for_husband(
     assert any("Опишите личное правило" in text for text in bot_session.sent_texts)
     assert knowledge_base_repo.get_by_family_member_id(dad.id) == []
 
+
+async def test_report_without_analyses_tells_user_to_use_analysis_command(
+    make_dispatcher, bot, bot_session, mom, analyses_repo, knowledge_base_repo
+):
+    knowledge_base_service, analysis_service = _services(analyses_repo, knowledge_base_repo)
+    dispatcher = make_dispatcher(analysis_service=analysis_service, knowledge_base_service=knowledge_base_service)
+
+    await dispatcher.feed_update(bot, make_message_update(222, 1, text="/report"))
+
+    assert any("Нет сохранённых анализов" in text for text in bot_session.sent_texts)
+
+
+async def test_report_shows_current_deviation_without_new_input(
+    make_dispatcher, bot, bot_session, mom, analyses_repo, knowledge_base_repo
+):
+    knowledge_base_service, analysis_service = _services(analyses_repo, knowledge_base_repo)
+    dispatcher = make_dispatcher(analysis_service=analysis_service, knowledge_base_service=knowledge_base_service)
+
+    await dispatcher.feed_update(bot, make_message_update(222, 1, text="/analysis"))
+    await dispatcher.feed_update(bot, make_message_update(222, 2, text="гемоглобин 100"))
+
+    bot_session.sent_texts.clear()
+    await dispatcher.feed_update(bot, make_message_update(222, 3, text="/report"))
+
+    combined = "\n".join(bot_session.sent_texts)
+    assert "Текущие показатели" in combined
+    assert "ниже нормы" in combined
+    assert "Низкий гемоглобин" in combined
+    # /report не должен создавать новую запись — только читает последние значения
+    assert len(analyses_repo.get_by_family_member_id(mom.id)) == 1
+
+
+async def test_admin_report_asks_which_family_member_first(
+    make_dispatcher, bot, bot_session, dad, mom, analyses_repo, knowledge_base_repo
+):
+    knowledge_base_service, analysis_service = _services(analyses_repo, knowledge_base_repo)
+    dispatcher = make_dispatcher(analysis_service=analysis_service, knowledge_base_service=knowledge_base_service)
+
+    await dispatcher.feed_update(bot, make_message_update(111, 1, text="/report"))
+    assert any("За кого посмотреть отчёт?" in text for text in bot_session.sent_texts)
+
+    bot_session.sent_texts.clear()
+    await dispatcher.feed_raw_update(bot, make_callback_update(111, 2, f"family_member:{mom.id}"))
+    assert any("Нет сохранённых анализов" in text for text in bot_session.sent_texts)
+

@@ -101,15 +101,10 @@ class AnalysisService:
 
         gender = self._resolve_gender(access, family_member_id)
 
-        readings: list[IndicatorReading] = []
-        abnormal_keys: list[str] = []
         for indicator_key, value in indicators.items():
             self._analyses_repository.add(family_member_id, entry_date, indicator_key, str(value))
-            norm_check = check_norm(indicator_key, value, gender)
-            readings.append(IndicatorReading(indicator_key=indicator_key, value=value, norm_check=norm_check))
-            if norm_check is not None and norm_check.status != "normal":
-                abnormal_keys.append(indicator_key)
 
+        readings, abnormal_keys = self._build_readings(indicators, gender)
         latest_values = self._analyses_repository.get_latest_values(family_member_id)
         personal_rules = self._knowledge_base_service.get_matching_rules(family_member_id, abnormal_keys)
         general_recommendations = get_active_recommendations(latest_values, gender)
@@ -119,6 +114,50 @@ class AnalysisService:
             personal_rules=personal_rules,
             general_recommendations=general_recommendations,
         )
+
+    def get_current_status(self, access: AccessContext, family_member_id: str) -> AnalysisResult:
+        """Отчёт по всем последним известным показателям — без нового ввода.
+
+        Используется командой /report, чтобы посмотреть текущие отклонения
+        и рекомендации (включая личные правила) в любой момент, а не только
+        сразу после ввода анализа.
+        """
+        if not access.can_act_for(family_member_id):
+            raise AccessDeniedError("Нет прав смотреть данные этого члена семьи")
+
+        gender = self._resolve_gender(access, family_member_id)
+        latest_values = self._analyses_repository.get_latest_values(family_member_id)
+
+        numeric_values: dict[str, float] = {}
+        for indicator_key, raw_value in latest_values.items():
+            try:
+                numeric_values[indicator_key] = float(raw_value)
+            except ValueError:
+                continue
+
+        readings, abnormal_keys = self._build_readings(numeric_values, gender)
+        personal_rules = self._knowledge_base_service.get_matching_rules(family_member_id, abnormal_keys)
+        general_recommendations = get_active_recommendations(latest_values, gender)
+
+        return AnalysisResult(
+            readings=readings,
+            personal_rules=personal_rules,
+            general_recommendations=general_recommendations,
+        )
+
+    @staticmethod
+    def _build_readings(
+        indicators: dict[str, float], gender: str
+    ) -> tuple[list[IndicatorReading], list[str]]:
+        """Сверить каждый показатель с нормой; вернуть (readings, ключи с отклонением)."""
+        readings: list[IndicatorReading] = []
+        abnormal_keys: list[str] = []
+        for indicator_key, value in indicators.items():
+            norm_check = check_norm(indicator_key, value, gender)
+            readings.append(IndicatorReading(indicator_key=indicator_key, value=value, norm_check=norm_check))
+            if norm_check is not None and norm_check.status != "normal":
+                abnormal_keys.append(indicator_key)
+        return readings, abnormal_keys
 
     @staticmethod
     def _resolve_gender(access: AccessContext, family_member_id: str) -> str:
