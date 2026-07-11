@@ -1,15 +1,16 @@
-"""Router aggregation for all Telegram update handlers.
+"""Сборка роутеров для всех обработчиков Telegram-апдейтов.
 
-Individual routers (analyses, workouts, nutrition, voice, photo, etc.) are
-added here as they are implemented in their own modules, then exposed
-through get_routers() so bot.py never has to change when a new handler
-module is introduced.
+Каждый новый роутер (анализы, тренировки, питание, голос, фото и т.д.)
+добавляется в своём модуле, а затем — в список ниже. bot.py эту функцию не
+меняет при добавлении нового модуля.
 """
 
 from aiogram import Router
 
+from handlers import logs, registration
+
 
 def get_routers() -> list[Router]:
-    """Return every router that should be registered on the Dispatcher."""
-    return []
+    """Вернуть все роутеры, которые нужно зарегистрировать на Dispatcher."""
+    return [registration.router, logs.router]
 

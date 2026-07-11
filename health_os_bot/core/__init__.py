@@ -1,8 +1,8 @@
-"""Business logic layer (Decision Engine).
+"""Слой бизнес-логики (Decision Engine).
 
-Handlers never talk to Google Sheets or OpenAI directly - they call into
-this package, which orchestrates the database/ repositories and services/
-integrations. This is where family-member permission checks, metric
-extraction rules, and recommendation logic live.
+Handlers никогда не обращаются к Google Sheets или OpenAI напрямую — только
+через этот пакет, который управляет репозиториями database/ и интеграциями
+services/. Здесь же живут проверки прав доступа между членами семьи, разбор
+метрик и логика рекомендаций.
 """
 

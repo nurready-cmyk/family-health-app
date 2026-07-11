@@ -189,19 +189,33 @@ Telegram update
 
 ```
 health_os_bot/
-├── bot.py                 ← точка входа: Bot/Dispatcher, регистрация роутеров, polling
-├── config.py               ← загрузка .env в неизменяемый Config
+├── bot.py                    ← точка входа: Bot/Dispatcher, DI, middleware, роутеры, polling
+├── config.py                  ← загрузка .env в неизменяемый Config
 ├── requirements.txt
 ├── .env.example
-├── .gitignore              ← .env, credentials.json, venv, __pycache__
-├── PRD.md                  ← этот документ
-├── handlers/                ← роутеры aiogram (по одному модулю на сценарий)
-│   └── __init__.py          ← get_routers() — единая точка регистрации
-├── core/                    ← Decision Engine: права доступа, сборка/валидация данных
-│   └── __init__.py
-├── database/                ← паттерн Репозиторий, единственное место с gspread
-│   └── __init__.py
-└── services/                 ← OpenAI (GPT) + faster-whisper, скрыты за интерфейсом
+├── .gitignore                 ← .env, credentials.json, venv, __pycache__
+├── PRD.md                     ← этот документ
+├── handlers/                   ← роутеры aiogram (только парсинг апдейта + вызов core/)
+│   ├── __init__.py             ← get_routers() — единая точка регистрации
+│   ├── states.py               ← FSM StatesGroup для многошаговых диалогов
+│   ├── keyboards.py             ← инлайн-клавиатуры (пол, члены семьи, тип метрики)
+│   ├── middlewares.py            ← AccessMiddleware — резолвит AccessContext на каждый апдейт
+│   ├── registration.py            ← /start, bootstrap admin, /add_family_member
+│   └── logs.py                     ← /log — ручной ввод ежедневных метрик
+├── core/                        ← Decision Engine: права доступа, бизнес-правила
+│   ├── __init__.py
+│   ├── exceptions.py             ← AccessDeniedError
+│   ├── access.py                  ← AccessService/AccessContext — кто ты и за кого можешь писать
+│   ├── family_members.py           ← FamilyMemberService — добавление членов семьи + bootstrap admin
+│   └── logs.py                      ← LogService — запись метрики с проверкой прав
+├── database/                    ← паттерн Репозиторий, единственный слой с gspread
+│   ├── __init__.py                ← build_repositories() — composition root
+│   ├── models.py                   ← доменные dataclass'ы + enum'ы Role/Gender/MetricType
+│   ├── interfaces.py                ← абстрактные ABC-репозитории (контракт)
+│   ├── sheets_client.py              ← GoogleSheetsClient + SheetRowStore (единственное место с gspread)
+│   ├── sheets_repositories.py          ← реализации интерфейсов поверх Google Sheets
+│   └── setup.py                        ← `python -m database.setup` — создание листов
+└── services/                    ← OpenAI (GPT) + faster-whisper, скрыты за интерфейсом (Этап 3)
     └── __init__.py
 ```
 
@@ -213,15 +227,16 @@ health_os_bot/
 - [x] Структура папок, `requirements.txt`, `bot.py`, `config.py`
 - [x] Пустые пакеты `handlers/`, `core/`, `database/`, `services/` с описанием назначения
 
-### Этап 1 — Данные
-- [ ] Репозитории `database/`: `FamilyMembersRepository`, `UsersRepository`, `LogsRepository`, `MedicalDataRepository`, `KnowledgeBaseRepository`
-- [ ] Подключение к Google Sheets через сервис-аккаунт (`credentials.json`)
-- [ ] Скрипт первоначального создания 5 листов с заголовками (аналог `setup()` из `telegram-bot/`)
+### Этап 1 — Данные (готово)
+- [x] Репозитории `database/`: `FamilyMembersRepository`, `UsersRepository`, `LogsRepository`, `MedicalDataRepository`, `KnowledgeBaseRepository`
+- [x] Подключение к Google Sheets через сервис-аккаунт (`credentials.json`)
+- [x] Скрипт первоначального создания 5 листов с заголовками (`python -m database.setup`, аналог `setup()` из `telegram-bot/`)
 
-### Этап 2 — Права и текстовый ввод
-- [ ] `core/`: определение роли по `tg_id`, разрешённые `family_member_id`
-- [ ] `handlers/`: роутер текстовых сообщений, ручной ввод метрик
-- [ ] Команда/кнопка «Добавить члена семьи» (только `admin`)
+### Этап 2 — Права и текстовый ввод (готово)
+- [x] `core/`: определение роли по `tg_id`, разрешённые `family_member_id` (`core/access.py`)
+- [x] `handlers/`: роутер текстовых сообщений, ручной ввод метрик (`/log` — `handlers/logs.py`)
+- [x] Команда «Добавить члена семьи» (только `admin` — `/add_family_member` в `handlers/registration.py`)
+- [x] Регистрация первого администратора через `BOOTSTRAP_ADMIN_IDS` (`/start`, `core/family_members.register_bootstrap_admin`)
 
 ### Этап 3 — Голос
 - [ ] `services/`: обёртка над `faster-whisper` (локальная транскрипция)

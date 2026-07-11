@@ -1,7 +1,7 @@
-"""Application configuration loaded from environment variables (.env).
+"""Конфигурация приложения из переменных окружения (.env).
 
-Nothing in this file talks to Telegram, Google Sheets, or OpenAI - it only
-resolves settings so the rest of the app never touches os.environ directly.
+Ничто в этом файле не обращается к Telegram, Google Sheets или OpenAI — он
+только собирает настройки, чтобы остальной код не трогал os.environ напрямую.
 """
 
 import os
@@ -14,7 +14,7 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Config:
-    """Immutable runtime configuration for the Health OS bot."""
+    """Неизменяемая конфигурация Health OS бота на время работы процесса."""
 
     bot_token: str
     openai_api_key: str
@@ -25,7 +25,7 @@ class Config:
 
 
 def _parse_admin_ids(raw: str) -> tuple[int, ...]:
-    """Parse a comma-separated list of Telegram user IDs from .env."""
+    """Разобрать список Telegram id через запятую из .env."""
     if not raw:
         return tuple()
 
@@ -33,7 +33,7 @@ def _parse_admin_ids(raw: str) -> tuple[int, ...]:
 
 
 def load_config() -> Config:
-    """Read and validate all required environment variables once at startup."""
+    """Прочитать и провалидировать все переменные окружения один раз при старте."""
     return Config(
         bot_token=os.environ["BOT_TOKEN"],
         openai_api_key=os.environ.get("OPENAI_API_KEY", ""),

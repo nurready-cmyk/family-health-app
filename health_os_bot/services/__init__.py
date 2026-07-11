@@ -1,8 +1,8 @@
-"""External integrations: LLM structuring (OpenAI) and local speech-to-text
-(faster-whisper).
+"""Внешние интеграции: структурирование через LLM (OpenAI) и локальное
+распознавание речи (faster-whisper).
 
-Kept separate from core/ so business logic never depends on a specific
-provider's SDK - core/ calls a service interface, not openai or
-faster_whisper directly.
+Вынесено отдельно от core/, чтобы бизнес-логика никогда не зависела от SDK
+конкретного провайдера — core/ обращается к интерфейсу сервиса, а не к
+openai или faster_whisper напрямую.
 """
 
