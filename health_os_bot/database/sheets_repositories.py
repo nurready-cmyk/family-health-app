@@ -10,13 +10,14 @@ from datetime import date
 from typing import Optional
 
 from database.interfaces import (
+    AnalysesRepository,
     FamilyMembersRepository,
     KnowledgeBaseRepository,
     LogsRepository,
     MedicalDataRepository,
     UsersRepository,
 )
-from database.models import FamilyMember, KnowledgeRule, LogEntry, MedicalRecord, User
+from database.models import AnalysisEntry, FamilyMember, KnowledgeRule, LogEntry, MedicalRecord, User
 from database.sheets_client import GoogleSheetsClient, SheetRowStore
 
 FAMILY_MEMBERS_SHEET_TITLE = "Family_Members"
@@ -33,6 +34,9 @@ MEDICAL_DATA_HEADERS = ["id", "date", "family_member_id", "event_type", "summary
 
 KNOWLEDGE_BASE_SHEET_TITLE = "Knowledge_Base"
 KNOWLEDGE_BASE_HEADERS = ["id", "family_member_id", "rule_text", "priority"]
+
+ANALYSES_SHEET_TITLE = "Analyses"
+ANALYSES_HEADERS = ["id", "family_member_id", "date", "indicator_key", "value"]
 
 
 class FamilyMembersSheetsRepository(FamilyMembersRepository):
@@ -221,6 +225,50 @@ class KnowledgeBaseSheetsRepository(KnowledgeBaseRepository):
             family_member_id=str(row["family_member_id"]),
             rule_text=str(row["rule_text"]),
             priority=int(row["priority"]) if row.get("priority") else 0,
+        )
+
+
+class AnalysesSheetsRepository(AnalysesRepository):
+    def __init__(self, client: GoogleSheetsClient) -> None:
+        worksheet = client.get_or_create_worksheet(ANALYSES_SHEET_TITLE, ANALYSES_HEADERS)
+        self._store = SheetRowStore(worksheet, ANALYSES_HEADERS)
+
+    def add(self, family_member_id: str, entry_date: str, indicator_key: str, value: str) -> AnalysisEntry:
+        entry = AnalysisEntry(
+            id=self._store.generate_id(),
+            family_member_id=family_member_id,
+            date=entry_date,
+            indicator_key=indicator_key,
+            value=value,
+        )
+        self._store.append(asdict(entry))
+        return entry
+
+    def get_latest_values(self, family_member_id: str) -> dict[str, str]:
+        entries = sorted(
+            self.get_by_family_member_id(family_member_id),
+            key=lambda entry: _safe_parse_date(entry.date),
+        )
+        latest: dict[str, str] = {}
+        for entry in entries:
+            latest[entry.indicator_key] = entry.value
+        return latest
+
+    def get_by_family_member_id(self, family_member_id: str) -> list[AnalysisEntry]:
+        return [
+            self._row_to_model(row)
+            for row in self._store.read_all()
+            if str(row.get("family_member_id")) == family_member_id
+        ]
+
+    @staticmethod
+    def _row_to_model(row: dict) -> AnalysisEntry:
+        return AnalysisEntry(
+            id=str(row["id"]),
+            family_member_id=str(row["family_member_id"]),
+            date=str(row["date"]),
+            indicator_key=str(row["indicator_key"]),
+            value=str(row["value"]),
         )
 
 

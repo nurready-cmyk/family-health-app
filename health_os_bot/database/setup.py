@@ -4,7 +4,7 @@
 
     python -m database.setup
 
-Создаёт все 5 листов с заголовками, если их ещё нет. Ничего не удаляет и не
+Создаёт все 6 листов с заголовками, если их ещё нет. Ничего не удаляет и не
 затирает — безопасно запускать повторно. Требует уже заполненный .env
 (GOOGLE_CREDENTIALS_PATH, GOOGLE_SHEET_ID) — см. config.py.
 """
@@ -18,7 +18,7 @@ def main() -> None:
     build_repositories(config.google_credentials_path, config.google_sheet_id)
     print(
         "Готово: листы Family_Members, Users, Logs, Medical_Data, "
-        "Knowledge_Base созданы (или уже существовали)."
+        "Knowledge_Base, Analyses созданы (или уже существовали)."
     )
 
 

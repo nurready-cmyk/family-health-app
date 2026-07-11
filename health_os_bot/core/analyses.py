@@ -1,0 +1,129 @@
+"""Ввод показателей анализов текстом + сборка рекомендаций.
+
+Портировано из telegram-bot/Code.gs (parseAnalysisText_) и связывает
+core/norms.py, core/rules.py и core/knowledge_base.py в один сценарий:
+сохранить показатели -> найти отклонения -> сначала личные правила, потом
+общие рекомендации.
+"""
+
+import re
+from dataclasses import dataclass
+
+from core.access import AccessContext
+from core.exceptions import AccessDeniedError
+from core.knowledge_base import KnowledgeBaseService
+from core.norms import NormCheckResult, check_norm, match_indicator_key
+from core.rules import Rule, get_active_recommendations
+from database.interfaces import AnalysesRepository
+from database.models import KnowledgeRule
+
+_BLOOD_PRESSURE_PATTERN = re.compile(r"давлен\w*\D{0,10}(\d{2,3})\s*/\s*(\d{2,3})", re.IGNORECASE)
+_INDICATOR_VALUE_PATTERN = re.compile(r"^(.*?)(-?\d+(?:[.,]\d+)?)\s*$")
+
+
+def parse_analysis_text(text: str) -> dict[str, float]:
+    """Разобрать свободный текст вида «гемоглобин 135, давление 120/80» в
+    {indicator_key: value}. Показатели, которые не удалось распознать по
+    core.norms.INDICATOR_ALIASES, молча пропускаются.
+    """
+    results: dict[str, float] = {}
+    remaining = text
+
+    bp_match = _BLOOD_PRESSURE_PATTERN.search(text)
+    if bp_match:
+        results["systolic"] = float(bp_match.group(1))
+        results["diastolic"] = float(bp_match.group(2))
+        remaining = remaining.replace(bp_match.group(0), "")
+
+    for part in re.split(r"[,;\n]", remaining):
+        part = part.strip()
+        if not part:
+            continue
+        match = _INDICATOR_VALUE_PATTERN.match(part)
+        if not match:
+            continue
+        name = match.group(1).strip()
+        if not name:
+            continue
+        try:
+            value = float(match.group(2).replace(",", "."))
+        except ValueError:
+            continue
+        key = match_indicator_key(name)
+        if key:
+            results[key] = value
+
+    return results
+
+
+@dataclass(frozen=True)
+class IndicatorReading:
+    """Один только что введённый показатель вместе с результатом сверки нормы."""
+
+    indicator_key: str
+    value: float
+    norm_check: NormCheckResult | None
+
+
+@dataclass(frozen=True)
+class AnalysisResult:
+    """Итог обработки одного сообщения с анализами: что записано + рекомендации."""
+
+    readings: list[IndicatorReading]
+    personal_rules: list[KnowledgeRule]
+    general_recommendations: list[Rule]
+
+
+class AnalysisService:
+    """Оркестрирует сохранение показателей и сборку рекомендаций."""
+
+    def __init__(
+        self,
+        analyses_repository: AnalysesRepository,
+        knowledge_base_service: KnowledgeBaseService,
+    ) -> None:
+        self._analyses_repository = analyses_repository
+        self._knowledge_base_service = knowledge_base_service
+
+    def record_analysis(
+        self,
+        access: AccessContext,
+        family_member_id: str,
+        indicators: dict[str, float],
+        entry_date: str,
+    ) -> AnalysisResult:
+        """Сохранить показатели и вернуть отклонения + рекомендации (личные впереди общих)."""
+        if not access.can_act_for(family_member_id):
+            raise AccessDeniedError("Нет прав вносить данные за этого члена семьи")
+
+        gender = self._resolve_gender(access, family_member_id)
+
+        readings: list[IndicatorReading] = []
+        abnormal_keys: list[str] = []
+        for indicator_key, value in indicators.items():
+            self._analyses_repository.add(family_member_id, entry_date, indicator_key, str(value))
+            norm_check = check_norm(indicator_key, value, gender)
+            readings.append(IndicatorReading(indicator_key=indicator_key, value=value, norm_check=norm_check))
+            if norm_check is not None and norm_check.status != "normal":
+                abnormal_keys.append(indicator_key)
+
+        latest_values = self._analyses_repository.get_latest_values(family_member_id)
+        personal_rules = self._knowledge_base_service.get_matching_rules(family_member_id, abnormal_keys)
+        general_recommendations = get_active_recommendations(latest_values, gender)
+
+        return AnalysisResult(
+            readings=readings,
+            personal_rules=personal_rules,
+            general_recommendations=general_recommendations,
+        )
+
+    @staticmethod
+    def _resolve_gender(access: AccessContext, family_member_id: str) -> str:
+        # can_act_for() уже гарантировал, что family_member_id есть в
+        # allowed_family_members — если его вдруг нет, это баг в вызывающем
+        # коде, и тихий дефолт на "male" исказил бы медицинские нормы молча.
+        for member in access.allowed_family_members:
+            if member.id == family_member_id:
+                return member.gender
+        raise ValueError(f"family_member_id {family_member_id!r} не найден в allowed_family_members")
+

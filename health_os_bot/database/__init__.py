@@ -16,6 +16,7 @@ database.interfaces, не зная, что за ними стоит Google Sheet
 from dataclasses import dataclass
 
 from database.interfaces import (
+    AnalysesRepository,
     FamilyMembersRepository,
     KnowledgeBaseRepository,
     LogsRepository,
@@ -33,12 +34,14 @@ class Repositories:
     logs: LogsRepository
     medical_data: MedicalDataRepository
     knowledge_base: KnowledgeBaseRepository
+    analyses: AnalysesRepository
 
 
 def build_repositories(credentials_path: str, spreadsheet_id: str) -> Repositories:
     """Собрать все репозитории поверх одного подключения к Google Sheets."""
     from database.sheets_client import GoogleSheetsClient
     from database.sheets_repositories import (
+        AnalysesSheetsRepository,
         FamilyMembersSheetsRepository,
         KnowledgeBaseSheetsRepository,
         LogsSheetsRepository,
@@ -53,5 +56,6 @@ def build_repositories(credentials_path: str, spreadsheet_id: str) -> Repositori
         logs=LogsSheetsRepository(client),
         medical_data=MedicalDataSheetsRepository(client),
         knowledge_base=KnowledgeBaseSheetsRepository(client),
+        analyses=AnalysesSheetsRepository(client),
     )
 

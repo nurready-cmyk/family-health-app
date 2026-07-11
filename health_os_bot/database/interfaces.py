@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from database.models import (
+    AnalysisEntry,
     FamilyMember,
     KnowledgeRule,
     LogEntry,
@@ -102,4 +103,20 @@ class KnowledgeBaseRepository(ABC):
     @abstractmethod
     def get_by_family_member_id(self, family_member_id: str) -> list[KnowledgeRule]:
         """Вернуть личные правила члена семьи, отсортированные по приоритету."""
+
+
+class AnalysesRepository(ABC):
+    """Значения показателей анализов (по одному на строку), см. database/models.py."""
+
+    @abstractmethod
+    def add(self, family_member_id: str, entry_date: str, indicator_key: str, value: str) -> AnalysisEntry:
+        """Сохранить одно значение одного показателя."""
+
+    @abstractmethod
+    def get_latest_values(self, family_member_id: str) -> dict[str, str]:
+        """Вернуть последнее известное значение по каждому показателю: {indicator_key: value}."""
+
+    @abstractmethod
+    def get_by_family_member_id(self, family_member_id: str) -> list[AnalysisEntry]:
+        """Вернуть всю историю анализов члена семьи."""
 

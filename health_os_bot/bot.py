@@ -15,7 +15,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import load_config
 from core.access import AccessService
+from core.analyses import AnalysisService
 from core.family_members import FamilyMemberService
+from core.knowledge_base import KnowledgeBaseService
 from core.logs import LogService
 from core.medical_data import MedicalDataService
 from core.photo import PhotoLogService
@@ -45,6 +47,8 @@ async def main() -> None:
     family_member_service = FamilyMemberService(repositories.family_members, repositories.users)
     log_service = LogService(repositories.logs)
     medical_data_service = MedicalDataService(repositories.medical_data)
+    knowledge_base_service = KnowledgeBaseService(repositories.knowledge_base)
+    analysis_service = AnalysisService(repositories.analyses, knowledge_base_service)
 
     # faster-whisper грузит модель в память один раз — небыстрая операция,
     # поэтому сервис создаётся здесь, а не на каждое голосовое сообщение.
@@ -75,6 +79,8 @@ async def main() -> None:
     dispatcher["family_member_service"] = family_member_service
     dispatcher["log_service"] = log_service
     dispatcher["medical_data_service"] = medical_data_service
+    dispatcher["knowledge_base_service"] = knowledge_base_service
+    dispatcher["analysis_service"] = analysis_service
     dispatcher["voice_log_service"] = voice_log_service
     dispatcher["photo_log_service"] = photo_log_service
 

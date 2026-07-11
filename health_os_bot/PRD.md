@@ -86,7 +86,7 @@ Telegram update
 
 ---
 
-## 5. Схема базы данных (Google Sheets, 5 листов)
+## 5. Схема базы данных (Google Sheets, 6 листов)
 
 Во все листы добавлена скрытая колонка `id` (UUID) — не видна пользователю в интерфейсе, но даёт репозиториям `update_by_id` / `delete_by_id` и безболезненный перенос на Postgres (первичный ключ с самого начала).
 
@@ -134,6 +134,17 @@ Telegram update
 | `family_member_id` | UUID (FK) | К кому относится правило |
 | `rule_text` | text | Например: «если гемоглобин низкий — мне лично помогает больше гречки, меньше кофе» |
 | `priority` | int | Приоритет при конфликте с общими рекомендациями (личные правила проверяются первыми) |
+
+### 5.6 `Analyses` — значения показателей анализов (добавлено на Этапе 5)
+Изначальная схема не предусматривала место для отдельных числовых показателей (гемоглобин, глюкоза и т.п.) — `Logs.metric_type` ограничен `energy/sleep/food/workout`, а `Medical_Data.summary` это свободный текст от GPT-4o. Чтобы rule-based рекомендации (перенесённые из `telegram-bot/Rules.gs`) могли сработать, нужны структурированные значения по каждому показателю — добавлен 6-й лист по той же схеме, что и в GAS-версии бота (`telegram-bot/Sheets.gs`).
+
+| Колонка | Тип | Описание |
+|---|---|---|
+| `id` | UUID | Первичный ключ |
+| `family_member_id` | UUID (FK) | Чьи данные |
+| `date` | date | Дата сдачи |
+| `indicator_key` | text | Ключ показателя (`hemoglobin`, `glucose`, `systolic` и т.д. — см. `core/norms.py`) |
+| `value` | text | Значение показателя |
 
 ---
 
@@ -203,7 +214,9 @@ health_os_bot/
 │   ├── registration.py            ← /start, bootstrap admin, /add_family_member
 │   ├── logs.py                     ← /log — ручной ввод ежедневных метрик
 │   ├── voice.py                     ← голосовые сообщения + карточка подтверждения
-│   └── photo.py                      ← фото анализов + карточка подтверждения
+│   ├── photo.py                      ← фото анализов + карточка подтверждения
+│   ├── analyses.py                    ← /analysis — ввод показателей текстом
+│   └── knowledge_base.py                ← /add_rule — обучение личным правилам
 ├── core/                        ← Decision Engine: права доступа, бизнес-правила
 │   ├── __init__.py
 │   ├── exceptions.py             ← AccessDeniedError
@@ -212,7 +225,11 @@ health_os_bot/
 │   ├── logs.py                      ← LogService — запись метрики с проверкой прав
 │   ├── medical_data.py                ← MedicalDataService — запись мед. события с проверкой прав
 │   ├── voice.py                        ← VoiceLogService — оркестрация транскрипции + извлечения
-│   └── photo.py                         ← PhotoLogService — оркестрация загрузки в Drive + саммари
+│   ├── photo.py                         ← PhotoLogService — оркестрация загрузки в Drive + саммари
+│   ├── norms.py                          ← нормы показателей по полу (портировано из Norms.gs)
+│   ├── rules.py                           ← rule-based рекомендации (портировано из Rules.gs)
+│   ├── knowledge_base.py                   ← KnowledgeBaseService — личные правила, проверяются первыми
+│   └── analyses.py                          ← AnalysisService — парсинг текста + сборка рекомендаций
 ├── database/                    ← паттерн Репозиторий, единственный слой с gspread
 │   ├── __init__.py                ← build_repositories() — composition root
 │   ├── models.py                   ← доменные dataclass'ы + enum'ы Role/Gender/MetricType
@@ -262,9 +279,12 @@ health_os_bot/
 - [x] `services/`: обёртка над `gpt-4o` (vision) для саммари и отклонений (`OpenAIImageSummaryService`)
 - [x] Запись в `Medical_Data` с `document_url` (`core/medical_data.py`, только после подтверждения — `handlers/photo.py`)
 
-### Этап 5 — Рекомендации и личные правила
-- [ ] `core/`: rule-based рекомендации (можно перенести логику из `telegram-bot/Rules.gs`, `Norms.gs`, `NutritionDB.gs`)
-- [ ] Проверка `Knowledge_Base` перед общими правилами
+### Этап 5 — Рекомендации и личные правила (готово)
+- [x] `core/`: rule-based рекомендации, перенесены из `telegram-bot/Rules.gs` и `Norms.gs` (`core/rules.py`, `core/norms.py`)
+- [x] Проверка `Knowledge_Base` перед общими правилами (`core/knowledge_base.py`, `core/analyses.py`)
+- [x] Добавлен лист `Analyses` (см. раздел 5.6) — понадобился для хранения структурированных показателей, на которых работают правила
+- [x] `/analysis` — ручной ввод показателей текстом (парсинг портирован из `telegram-bot/Code.gs`), `/add_rule` — обучение личным правилам
+- [ ] `NutritionDB.gs` (база продуктов и витаминов) не перенесена — не входила в обязательный чеклист этапа, осталась в "не входит в MVP"
 
 ### Этап 6 — Пост-MVP (не блокирует релиз)
 - [ ] Миграция `database/` на PostgreSQL
@@ -291,6 +311,7 @@ health_os_bot/
 - Веб-интерфейс / SaaS-онбординг для сторонних семей
 - Автоматический парсинг PDF-бланков (только фото через vision-модель)
 - Уведомления/триггеры по расписанию (ежедневный чек-ин, еженедельный отчёт) — можно перенести идею из `telegram-bot/Triggers.gs`, но не в этом этапе
+- База продуктов и витаминов (`telegram-bot/NutritionDB.gs`) — не портирована в Health OS
 
 ---
 

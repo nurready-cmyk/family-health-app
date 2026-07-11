@@ -86,3 +86,17 @@ class KnowledgeRule:
     rule_text: str
     priority: int
 
+
+@dataclass(frozen=True)
+class AnalysisEntry:
+    """Строка листа Analyses — одно значение одного показателя на одну дату.
+
+    Один анализ (например, общий анализ крови) раскладывается на несколько
+    строк — по одной на каждый показатель, как в telegram-bot/Sheets.gs."""
+
+    id: str
+    family_member_id: str
+    date: str
+    indicator_key: str
+    value: str
+

@@ -46,3 +46,17 @@ class PhotoLogStates(StatesGroup):
     choosing_family_member = State()
     confirming = State()
 
+
+class AnalysisStates(StatesGroup):
+    """Диалог ручного ввода показателей анализов (/analysis)."""
+
+    choosing_family_member = State()
+    entering_indicators = State()
+
+
+class AddRuleStates(StatesGroup):
+    """Диалог добавления личного правила (/add_rule)."""
+
+    choosing_family_member = State()
+    entering_rule_text = State()
+

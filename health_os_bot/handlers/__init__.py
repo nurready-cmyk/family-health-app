@@ -7,10 +7,17 @@
 
 from aiogram import Router
 
-from handlers import logs, photo, registration, voice
+from handlers import analyses, knowledge_base, logs, photo, registration, voice
 
 
 def get_routers() -> list[Router]:
     """Вернуть все роутеры, которые нужно зарегистрировать на Dispatcher."""
-    return [registration.router, logs.router, voice.router, photo.router]
+    return [
+        registration.router,
+        logs.router,
+        voice.router,
+        photo.router,
+        analyses.router,
+        knowledge_base.router,
+    ]
 
