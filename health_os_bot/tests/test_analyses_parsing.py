@@ -1,6 +1,9 @@
-"""core/analyses.py: parse_analysis_text — разбор свободного текста в показатели."""
+"""core/analyses.py: parse_analysis_text — разбор свободного текста в показатели,
+parse_flexible_date — разбор даты (в т.ч. исторической) для /analysis."""
 
-from core.analyses import parse_analysis_text
+from datetime import date
+
+from core.analyses import parse_analysis_text, parse_flexible_date
 
 
 def test_parses_single_indicator():
@@ -38,4 +41,42 @@ def test_ignores_unrecognized_indicator_names():
 
 def test_returns_empty_dict_for_text_without_numbers():
     assert parse_analysis_text("просто текст без цифр") == {}
+
+
+# ---------- parse_flexible_date ----------
+
+
+def test_parse_flexible_date_accepts_segodnya():
+    assert parse_flexible_date("сегодня") == date.today().isoformat()
+
+
+def test_parse_flexible_date_accepts_today_and_dash():
+    assert parse_flexible_date("today") == date.today().isoformat()
+    assert parse_flexible_date("-") == date.today().isoformat()
+
+
+def test_parse_flexible_date_accepts_dmy_format():
+    assert parse_flexible_date("15.07.2025") == "2025-07-15"
+
+
+def test_parse_flexible_date_accepts_dmy_with_different_separators():
+    assert parse_flexible_date("15-07-2025") == "2025-07-15"
+    assert parse_flexible_date("15/07/2025") == "2025-07-15"
+
+
+def test_parse_flexible_date_accepts_iso_format():
+    assert parse_flexible_date("2025-07-15") == "2025-07-15"
+
+
+def test_parse_flexible_date_accepts_single_digit_day_and_month():
+    assert parse_flexible_date("5.7.2025") == "2025-07-05"
+
+
+def test_parse_flexible_date_rejects_invalid_calendar_date():
+    assert parse_flexible_date("31.02.2025") is None
+
+
+def test_parse_flexible_date_rejects_garbage():
+    assert parse_flexible_date("не дата") is None
+    assert parse_flexible_date("") is None
 

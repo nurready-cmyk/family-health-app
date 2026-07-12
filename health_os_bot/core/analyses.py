@@ -8,6 +8,8 @@ core/norms.py, core/rules.py и core/knowledge_base.py в один сценар�
 
 import re
 from dataclasses import dataclass
+from datetime import date
+from typing import Optional
 
 from core.access import AccessContext
 from core.exceptions import AccessDeniedError
@@ -19,6 +21,33 @@ from database.models import KnowledgeRule
 
 _BLOOD_PRESSURE_PATTERN = re.compile(r"давлен\w*\D{0,10}(\d{2,3})\s*/\s*(\d{2,3})", re.IGNORECASE)
 _INDICATOR_VALUE_PATTERN = re.compile(r"^(.*?)(-?\d+(?:[.,]\d+)?)\s*$")
+_TODAY_WORDS = {"сегодня", "today", "-"}
+_DMY_PATTERN = re.compile(r"^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$")
+
+
+def parse_flexible_date(text: str) -> Optional[str]:
+    """Разобрать дату анализа, введённую пользователем, в ISO-строку.
+
+    Понимает «сегодня»/«today»/«-» (текущая дата), ДД.ММ.ГГГГ и ГГГГ-ММ-ДД —
+    нужно для ввода исторических анализов (например, сданных год назад),
+    а не только «прямо сейчас».
+    """
+    normalized = text.strip().lower()
+    if normalized in _TODAY_WORDS:
+        return date.today().isoformat()
+
+    dmy_match = _DMY_PATTERN.match(normalized)
+    if dmy_match:
+        day, month, year = (int(part) for part in dmy_match.groups())
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            return None
+
+    try:
+        return date.fromisoformat(normalized).isoformat()
+    except ValueError:
+        return None
 
 
 def parse_analysis_text(text: str) -> dict[str, float]:

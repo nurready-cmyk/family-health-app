@@ -9,7 +9,6 @@
 диалог).
 """
 
-from datetime import date
 from typing import Optional
 
 from aiogram import F, Router
@@ -18,7 +17,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from core.access import AccessContext
-from core.analyses import AnalysisResult, AnalysisService, parse_analysis_text
+from core.analyses import AnalysisResult, AnalysisService, parse_analysis_text, parse_flexible_date
 from core.exceptions import AccessDeniedError
 from core.norms import NORMS
 from core.rules import Rule
@@ -45,7 +44,7 @@ async def start_analysis(
 
     if len(access.allowed_family_members) == 1:
         await state.update_data(family_member_id=access.allowed_family_members[0].id)
-        await _prompt_indicators(message, state)
+        await _prompt_date(message, state)
         return
 
     await message.answer(
@@ -60,7 +59,29 @@ async def analysis_family_member_chosen(callback: CallbackQuery, state: FSMConte
     family_member_id = callback.data.split(":", 1)[1]
     await state.update_data(family_member_id=family_member_id)
     await callback.answer()
-    await _prompt_indicators(callback.message, state)
+    await _prompt_date(callback.message, state)
+
+
+async def _prompt_date(message: Message, state: FSMContext) -> None:
+    await message.answer(
+        "На какую дату эти анализы?\n"
+        "Напишите дату (например <i>15.07.2025</i>) — пригодится для анализов "
+        "прошлых лет, чтобы сохранить историю. Или отправьте «сегодня»."
+    )
+    await state.set_state(AnalysisStates.entering_date)
+
+
+@router.message(AnalysisStates.entering_date, F.text)
+async def date_entered(message: Message, state: FSMContext) -> None:
+    entry_date = parse_flexible_date(message.text)
+    if entry_date is None:
+        await message.answer(
+            "Не понял дату. Формат: <i>15.07.2025</i>, <i>2025-07-15</i> или «сегодня»."
+        )
+        return
+
+    await state.update_data(entry_date=entry_date)
+    await _prompt_indicators(message, state)
 
 
 async def _prompt_indicators(message: Message, state: FSMContext) -> None:
@@ -90,7 +111,7 @@ async def indicators_entered(
             access=access,
             family_member_id=data["family_member_id"],
             indicators=indicators,
-            entry_date=date.today().isoformat(),
+            entry_date=data["entry_date"],
         )
     except AccessDeniedError as error:
         await message.answer(str(error))
@@ -98,7 +119,9 @@ async def indicators_entered(
         return
 
     await state.clear()
-    await message.answer("📊 Записал:\n" + _format_readings(result) + _format_recommendations_block(result))
+    await message.answer(
+        f"📊 Записал ({data['entry_date']}):\n" + _format_readings(result) + _format_recommendations_block(result)
+    )
 
 
 @router.message(Command("report"))

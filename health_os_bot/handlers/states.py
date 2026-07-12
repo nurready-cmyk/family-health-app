@@ -51,6 +51,7 @@ class AnalysisStates(StatesGroup):
     """Диалог ручного ввода показателей анализов (/analysis)."""
 
     choosing_family_member = State()
+    entering_date = State()
     entering_indicators = State()
 
 
