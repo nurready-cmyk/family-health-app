@@ -237,6 +237,7 @@ class RecordingSession(BaseSession):
         super().__init__()
         self.sent_texts: list[str] = []
         self.edited_texts: list[str] = []
+        self.last_answered_callback_text: str | None = None
 
     async def close(self) -> None:
         pass
@@ -254,6 +255,7 @@ class RecordingSession(BaseSession):
             self.edited_texts.append(method.text)
             return True
         if name == "AnswerCallbackQuery":
+            self.last_answered_callback_text = method.text
             return True
         if name == "GetMe":
             return TgUser(id=999999, is_bot=True, first_name="HealthOSBot", username="health_os_test_bot")
