@@ -21,7 +21,7 @@ from core.analyses import AnalysisResult, AnalysisService, parse_analysis_text, 
 from core.exceptions import AccessDeniedError
 from core.norms import NORMS
 from core.rules import Rule
-from handlers.keyboards import family_members_keyboard
+from handlers.keyboards import MENU_ANALYSIS, MENU_REPORT, family_members_keyboard
 from handlers.states import AnalysisStates, ReportStates
 
 router = Router(name="analyses")
@@ -30,6 +30,7 @@ _STATUS_LABELS = {"normal": "✅ норма", "low": "⬇️ ниже нормы
 
 
 @router.message(Command("analysis"))
+@router.message(F.text == MENU_ANALYSIS)
 async def start_analysis(
     message: Message,
     access: Optional[AccessContext],
@@ -125,6 +126,7 @@ async def indicators_entered(
 
 
 @router.message(Command("report"))
+@router.message(F.text == MENU_REPORT)
 async def start_report(
     message: Message,
     access: Optional[AccessContext],

@@ -67,3 +67,12 @@ class ReportStates(StatesGroup):
 
     choosing_family_member = State()
 
+
+class ExamStates(StatesGroup):
+    """Диалог добавления обследования/приёма врача текстом, без фото (/exam)."""
+
+    choosing_family_member = State()
+    entering_date = State()
+    entering_event_type = State()
+    entering_summary = State()
+

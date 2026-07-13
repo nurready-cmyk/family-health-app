@@ -18,7 +18,7 @@ from core.access import AccessContext
 from core.exceptions import AccessDeniedError
 from core.family_members import FamilyMemberService
 from database.models import Role
-from handlers.keyboards import gender_keyboard
+from handlers.keyboards import gender_keyboard, main_menu_keyboard
 from handlers.states import AddFamilyMemberStates, BootstrapAdminStates
 
 router = Router(name="registration")
@@ -40,7 +40,10 @@ async def handle_start(
 ) -> None:
     if access is not None:
         role_label = "администратор" if access.user.role == Role.ADMIN.value else "участник семьи"
-        await message.answer(f"С возвращением, {access.user.name}! Вы вошли как {role_label}.")
+        await message.answer(
+            f"С возвращением, {access.user.name}! Вы вошли как {role_label}.",
+            reply_markup=main_menu_keyboard(),
+        )
         return
 
     if message.from_user is None or message.from_user.id not in config.bootstrap_admin_ids:
@@ -91,7 +94,8 @@ async def bootstrap_birth_year_entered(
     await message.answer(
         "Готово! Вы зарегистрированы как администратор.\n\n"
         "/add_family_member — добавить остальных членов семьи\n"
-        "/log — внести данные о здоровье"
+        "Остальным можно пользоваться через меню внизу.",
+        reply_markup=main_menu_keyboard(),
     )
 
 
@@ -173,5 +177,7 @@ async def add_family_member_telegram_id_entered(
         return
 
     await state.clear()
-    await message.answer(f"✅ Добавлен новый член семьи: {member.name}")
+    await message.answer(
+        f"✅ Добавлен новый член семьи: {member.name}", reply_markup=main_menu_keyboard()
+    )
 

@@ -14,13 +14,14 @@ from aiogram.types import CallbackQuery, Message
 from core.access import AccessContext
 from core.exceptions import AccessDeniedError
 from core.knowledge_base import KnowledgeBaseService
-from handlers.keyboards import family_members_keyboard
+from handlers.keyboards import MENU_ADD_RULE, family_members_keyboard
 from handlers.states import AddRuleStates
 
 router = Router(name="knowledge_base")
 
 
 @router.message(Command("add_rule"))
+@router.message(F.text == MENU_ADD_RULE)
 async def start_add_rule(
     message: Message,
     access: Optional[AccessContext],

@@ -10,7 +10,7 @@ fallback.router обязательно идёт последним — он ло
 
 from aiogram import Router
 
-from handlers import analyses, fallback, knowledge_base, logs, photo, registration, voice
+from handlers import analyses, exams, fallback, knowledge_base, logs, photo, registration, voice
 
 
 def get_routers() -> list[Router]:
@@ -21,6 +21,7 @@ def get_routers() -> list[Router]:
         voice.router,
         photo.router,
         analyses.router,
+        exams.router,
         knowledge_base.router,
         fallback.router,
     ]

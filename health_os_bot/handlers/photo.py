@@ -8,6 +8,7 @@ Medical_Data ничего не пишется, пока пользователь
 
 import os
 import tempfile
+from datetime import date
 from typing import Optional
 
 from aiogram import F, Router
@@ -166,6 +167,7 @@ async def photo_confirmed(
             event_type=data["event_type"],
             summary=data["summary"],
             document_url=data["document_url"],
+            event_date=date.today().isoformat(),
         )
     except AccessDeniedError as error:
         await callback.message.edit_text(str(error))

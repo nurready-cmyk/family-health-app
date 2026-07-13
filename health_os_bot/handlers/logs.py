@@ -15,13 +15,19 @@ from aiogram.types import CallbackQuery, Message
 from core.access import AccessContext
 from core.exceptions import AccessDeniedError
 from core.logs import LogService
-from handlers.keyboards import METRIC_TYPE_LABELS, family_members_keyboard, metric_type_keyboard
+from handlers.keyboards import (
+    MENU_LOG,
+    METRIC_TYPE_LABELS,
+    family_members_keyboard,
+    metric_type_keyboard,
+)
 from handlers.states import LogMetricStates
 
 router = Router(name="logs")
 
 
 @router.message(Command("log"))
+@router.message(F.text == MENU_LOG)
 async def start_log(
     message: Message,
     access: Optional[AccessContext],
@@ -68,8 +74,16 @@ async def metric_type_chosen(callback: CallbackQuery, state: FSMContext) -> None
 
 @router.message(LogMetricStates.entering_value, F.text)
 async def value_entered(message: Message, state: FSMContext) -> None:
-    await state.update_data(value=message.text.strip())
-    await message.answer("Заметка (или отправьте «-», если нет):")
+    value = message.text.strip()
+    await state.update_data(value=value)
+    data = await state.get_data()
+    label = METRIC_TYPE_LABELS.get(data["metric_type"], data["metric_type"])
+    await message.answer(
+        f"Записал: {label} = {value}\n\n"
+        "Заметка — необязательный комментарий с дополнительным контекстом "
+        "(например «после хорошего сна» или «болела голова»). "
+        "Если добавить нечего, отправьте «-»."
+    )
     await state.set_state(LogMetricStates.entering_notes)
 
 
