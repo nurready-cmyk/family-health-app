@@ -96,8 +96,14 @@ function getMemberById_(access, memberId) {
 /** Короткий понятный id из имени («Адель» → adel), с защитой от совпадений. */
 function slugifyName_(name) {
   var map = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'};
-  var letters = name.toLowerCase().split('').filter(function (c) { return /[a-zа-яё]/.test(c); });
-  var slug = letters.map(function (c) { return map[c] != null ? map[c] : c; }).join('').slice(0, 5);
+  // Проверяем принадлежность букве через сам map, а не через диапазон
+  // /[a-zа-яё]/ — диапазон кириллицы в регулярке ломается, если файл
+  // куда-нибудь попадёт в неверной кодировке.
+  var slug = name.toLowerCase().split('').filter(function (c) {
+    return map[c] != null || (c >= 'a' && c <= 'z');
+  }).map(function (c) {
+    return map[c] != null ? map[c] : c;
+  }).join('').slice(0, 5);
   return slug || 'person';
 }
 
