@@ -11,7 +11,7 @@ rule_text, priority) — в отличие от GAS-версии (telegram-bot/S
 
 from core.access import AccessContext
 from core.exceptions import AccessDeniedError
-from core.norms import NORMS
+from core.norms import get_indicator_label
 from database.interfaces import KnowledgeBaseRepository
 from database.models import KnowledgeRule
 
@@ -45,10 +45,7 @@ class KnowledgeBaseService:
         if not rules or not triggered_indicator_keys:
             return []
 
-        triggered_labels = [
-            NORMS[key].label.lower() if key in NORMS else key.lower()
-            for key in triggered_indicator_keys
-        ]
+        triggered_labels = [get_indicator_label(key).lower() for key in triggered_indicator_keys]
 
         return [
             rule

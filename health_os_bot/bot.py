@@ -48,7 +48,9 @@ async def main() -> None:
     log_service = LogService(repositories.logs)
     medical_data_service = MedicalDataService(repositories.medical_data)
     knowledge_base_service = KnowledgeBaseService(repositories.knowledge_base)
-    analysis_service = AnalysisService(repositories.analyses, knowledge_base_service)
+    analysis_service = AnalysisService(
+        repositories.analyses, knowledge_base_service, repositories.norms, repositories.personal_norms
+    )
 
     # faster-whisper грузит модель в память один раз — небыстрая операция,
     # поэтому сервис создаётся здесь, а не на каждое голосовое сообщение.

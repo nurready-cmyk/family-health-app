@@ -17,9 +17,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from core.access import AccessContext
-from core.analyses import AnalysisResult, AnalysisService, parse_analysis_text, parse_flexible_date
+from core.analyses import AnalysisResult, AnalysisService, parse_flexible_date
 from core.exceptions import AccessDeniedError
-from core.norms import NORMS
+from core.norms import get_indicator_label, get_indicator_unit
 from core.rules import Rule
 from handlers.keyboards import MENU_ANALYSIS, MENU_REPORT, family_members_keyboard
 from handlers.states import AnalysisStates, ReportStates
@@ -100,7 +100,7 @@ async def indicators_entered(
     access: AccessContext,
     analysis_service: AnalysisService,
 ) -> None:
-    indicators = parse_analysis_text(message.text)
+    indicators = analysis_service.parse_indicators(message.text)
     if not indicators:
         await message.answer("Не смог распознать показатели. Попробуйте формат: <i>гемоглобин 135</i>")
         return
@@ -183,9 +183,8 @@ async def _send_report(
 def _format_readings(result: AnalysisResult) -> str:
     lines = []
     for reading in result.readings:
-        norm = NORMS.get(reading.indicator_key)
-        label = norm.label if norm else reading.indicator_key
-        unit = norm.unit if norm else ""
+        label = get_indicator_label(reading.indicator_key)
+        unit = get_indicator_unit(reading.indicator_key)
         status_label = _STATUS_LABELS.get(reading.norm_check.status, "") if reading.norm_check else ""
         lines.append(f"• {label}: <b>{reading.value}</b> {unit} — {status_label}")
     return "\n".join(lines)

@@ -14,9 +14,17 @@ from typing import Optional
 from core.access import AccessContext
 from core.exceptions import AccessDeniedError
 from core.knowledge_base import KnowledgeBaseService
-from core.norms import NormCheckResult, check_norm, match_indicator_key
+from core.norms import (
+    NORMS,
+    CustomIndicator,
+    NormCheckResult,
+    check_norm,
+    match_indicator_key,
+    set_custom_indicators,
+    set_norm_overrides,
+)
 from core.rules import Rule, get_active_recommendations
-from database.interfaces import AnalysesRepository
+from database.interfaces import AnalysesRepository, NormsRepository, PersonalNormsRepository
 from database.models import KnowledgeRule
 
 _BLOOD_PRESSURE_PATTERN = re.compile(r"давлен\w*\D{0,10}(\d{2,3})\s*/\s*(\d{2,3})", re.IGNORECASE)
@@ -113,9 +121,54 @@ class AnalysisService:
         self,
         analyses_repository: AnalysesRepository,
         knowledge_base_service: KnowledgeBaseService,
+        norms_repository: NormsRepository,
+        personal_norms_repository: PersonalNormsRepository,
     ) -> None:
         self._analyses_repository = analyses_repository
         self._knowledge_base_service = knowledge_base_service
+        self._norms_repository = norms_repository
+        self._personal_norms_repository = personal_norms_repository
+
+    def refresh_indicator_catalog(self, family_member_id: Optional[str] = None) -> None:
+        """Подтянуть Справочник_Анализов в core.norms перед распознаванием текста
+        и/или сверкой с нормой: и переопределения нормы для встроенных
+        показателей, и показатели, которых нет в коде вообще (добавлены
+        только в таблице, например МНО) — их русское название начинает
+        работать как алиас в свободном тексте, а сама норма (если задана)
+        учитывается при сверке.
+
+        Если передан family_member_id — поверх общей нормы по полу
+        накладывается персональная (Личные_Нормы), нужна, например, для
+        детей, у которых норма отличается не только по полу, но и по возрасту.
+        """
+        catalog = self._norms_repository.get_catalog()
+
+        general_overrides: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {}
+        custom_indicators: dict[str, CustomIndicator] = {}
+        for key, (label, male_range, female_range) in catalog.items():
+            if key in NORMS:
+                if male_range is not None or female_range is not None:
+                    general_overrides[key] = (male_range, female_range)
+            else:
+                custom_indicators[key] = CustomIndicator(label, male_range, female_range)
+        set_custom_indicators(custom_indicators)
+
+        if family_member_id is None:
+            set_norm_overrides(general_overrides)
+            return
+
+        personal_overrides = self._personal_norms_repository.get_overrides(family_member_id)
+        merged = dict(general_overrides)
+        for indicator_key, norm_range in personal_overrides.items():
+            merged[indicator_key] = (norm_range, norm_range)
+        set_norm_overrides(merged)
+
+    def parse_indicators(self, text: str) -> dict[str, float]:
+        """Распознать показатели в свободном тексте, предварительно подтянув
+        актуальный Справочник_Анализов — иначе показатель, добавленный туда
+        только что, не будет узнан (см. refresh_indicator_catalog)."""
+        self.refresh_indicator_catalog()
+        return parse_analysis_text(text)
 
     def record_analysis(
         self,
@@ -128,6 +181,7 @@ class AnalysisService:
         if not access.can_act_for(family_member_id):
             raise AccessDeniedError("Нет прав вносить данные за этого члена семьи")
 
+        self.refresh_indicator_catalog(family_member_id)
         gender = self._resolve_gender(access, family_member_id)
 
         for indicator_key, value in indicators.items():
@@ -154,6 +208,7 @@ class AnalysisService:
         if not access.can_act_for(family_member_id):
             raise AccessDeniedError("Нет прав смотреть данные этого члена семьи")
 
+        self.refresh_indicator_catalog(family_member_id)
         gender = self._resolve_gender(access, family_member_id)
         latest_values = self._analyses_repository.get_latest_values(family_member_id)
 

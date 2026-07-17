@@ -5,6 +5,7 @@
 эти классы напрямую — только абстрактные типы из interfaces.py.
 """
 
+import re
 from dataclasses import asdict
 from datetime import date
 from typing import Optional
@@ -15,6 +16,8 @@ from database.interfaces import (
     KnowledgeBaseRepository,
     LogsRepository,
     MedicalDataRepository,
+    NormsRepository,
+    PersonalNormsRepository,
     UsersRepository,
 )
 from database.models import AnalysisEntry, FamilyMember, KnowledgeRule, LogEntry, MedicalRecord, User
@@ -38,6 +41,55 @@ KNOWLEDGE_BASE_HEADERS = ["id", "family_member_id", "rule_text", "priority"]
 ANALYSES_SHEET_TITLE = "Analyses"
 ANALYSES_HEADERS = ["id", "family_member_id", "date", "indicator_key", "value"]
 
+NORMS_REFERENCE_SHEET_TITLE = "Справочник_Анализов"
+NORMS_REFERENCE_HEADERS = [
+    "Русское название",
+    "Код (indicator_key)",
+    "Норма (мужчины)",
+    "Норма (женщины)",
+]
+NORMS_REFERENCE_LABEL_HEADER = "Русское название"
+NORMS_REFERENCE_KEY_HEADER = "Код (indicator_key)"
+NORMS_REFERENCE_MALE_HEADER = "Норма (мужчины)"
+NORMS_REFERENCE_FEMALE_HEADER = "Норма (женщины)"
+
+PERSONAL_NORMS_SHEET_TITLE = "Личные_Нормы"
+PERSONAL_NORMS_HEADERS = ["family_member_id", "Русское название", "Код (indicator_key)", "Норма"]
+PERSONAL_NORMS_MEMBER_HEADER = "family_member_id"
+PERSONAL_NORMS_KEY_HEADER = "Код (indicator_key)"
+PERSONAL_NORMS_RANGE_HEADER = "Норма"
+
+_NORM_RANGE_PATTERN = re.compile(r"^\s*(-?\d+(?:[.,]\d+)?)\s*-\s*(-?\d+(?:[.,]\d+)?)\s*$")
+
+
+def _parse_norm_range(text: str) -> Optional[tuple[float, float]]:
+    """Разобрать «120-155» в (120.0, 155.0). None, если ячейка пустая или не по формату."""
+    if not text:
+        return None
+    match = _NORM_RANGE_PATTERN.match(text)
+    if not match:
+        return None
+    return (float(match.group(1).replace(",", ".")), float(match.group(2).replace(",", ".")))
+
+
+_CYRILLIC_TO_LATIN = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "h", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+
+def _slugify_name(name: str) -> str:
+    """«Адель» -> «adel» — короткий понятный id вместо UUID, чтобы в выпадающем
+    списке Analyses!family_member_id сразу было видно, о ком речь, без сверки
+    с листом Family_Members.
+    """
+    letters = [_CYRILLIC_TO_LATIN.get(char, char) for char in name.lower() if char.isalpha()]
+    slug = "".join(letters)[:5]
+    return slug or "person"
+
 
 class FamilyMembersSheetsRepository(FamilyMembersRepository):
     def __init__(self, client: GoogleSheetsClient) -> None:
@@ -46,10 +98,24 @@ class FamilyMembersSheetsRepository(FamilyMembersRepository):
 
     def add(self, name: str, gender: str, birth_year: int) -> FamilyMember:
         member = FamilyMember(
-            id=self._store.generate_id(), name=name, gender=gender, birth_year=birth_year
+            id=self._generate_id(name), name=name, gender=gender, birth_year=birth_year
         )
         self._store.append(asdict(member))
         return member
+
+    def _generate_id(self, name: str) -> str:
+        """Короткий id на основе имени; при совпадении с уже существующим —
+        добавляет цифру на конце (redkий случай — тёзки в одной семье)."""
+        base = _slugify_name(name)
+        existing_ids = {str(row.get("id")) for row in self._store.read_all()}
+
+        candidate = base
+        suffix = 1
+        while candidate in existing_ids:
+            suffix += 1
+            digits = str(suffix)
+            candidate = f"{base[: max(1, 5 - len(digits))]}{digits}"
+        return candidate
 
     def get_all(self) -> list[FamilyMember]:
         return [self._row_to_model(row) for row in self._store.read_all()]
@@ -270,6 +336,68 @@ class AnalysesSheetsRepository(AnalysesRepository):
             indicator_key=str(row["indicator_key"]),
             value=str(row["value"]),
         )
+
+
+class NormsSheetsRepository(NormsRepository):
+    """Читает весь справочник показателей из листа Справочник_Анализов —
+    и название/норму для встроенных показателей (переопределение), и
+    показатели, которых нет в core/norms.NORMS вообще (пользователь добавил
+    сам, например МНО). Строка без нормы не пропускается целиком — она всё
+    равно возвращается (с None вместо диапазонов), чтобы core/norms.py мог
+    хотя бы распознавать название в свободном тексте, даже когда норма ещё
+    не вписана.
+    """
+
+    def __init__(self, client: GoogleSheetsClient) -> None:
+        self._worksheet = client.get_or_create_worksheet(
+            NORMS_REFERENCE_SHEET_TITLE, NORMS_REFERENCE_HEADERS
+        )
+
+    def get_catalog(self) -> dict[str, tuple[str, Optional[tuple[float, float]], Optional[tuple[float, float]]]]:
+        catalog: dict[str, tuple[str, Optional[tuple[float, float]], Optional[tuple[float, float]]]] = {}
+        for row in self._worksheet.get_all_records():
+            key = str(row.get(NORMS_REFERENCE_KEY_HEADER, "")).strip()
+            label = str(row.get(NORMS_REFERENCE_LABEL_HEADER, "")).strip()
+            if not key or not label:
+                continue
+
+            male_range = _parse_norm_range(str(row.get(NORMS_REFERENCE_MALE_HEADER, "")))
+            female_range = _parse_norm_range(str(row.get(NORMS_REFERENCE_FEMALE_HEADER, "")))
+            # Если заполнен только один столбец — считаем, что норма одна для всех.
+            if male_range is not None or female_range is not None:
+                male_range, female_range = male_range or female_range, female_range or male_range
+
+            catalog[key] = (label, male_range, female_range)
+        return catalog
+
+
+class PersonalNormsSheetsRepository(PersonalNormsRepository):
+    """Читает индивидуальные нормы (например, для детей) из листа Личные_Нормы.
+
+    Формат тот же лист для всех членов семьи — колонка family_member_id
+    определяет, кому принадлежит строка. Добавить нового члена семьи (ещё
+    одного ребёнка, бабушку/дедушку) — просто новые строки, без изменения
+    структуры листа.
+    """
+
+    def __init__(self, client: GoogleSheetsClient) -> None:
+        self._worksheet = client.get_or_create_worksheet(
+            PERSONAL_NORMS_SHEET_TITLE, PERSONAL_NORMS_HEADERS
+        )
+
+    def get_overrides(self, family_member_id: str) -> dict[str, tuple[float, float]]:
+        overrides: dict[str, tuple[float, float]] = {}
+        for row in self._worksheet.get_all_records():
+            if str(row.get(PERSONAL_NORMS_MEMBER_HEADER, "")).strip() != family_member_id:
+                continue
+
+            key = str(row.get(PERSONAL_NORMS_KEY_HEADER, "")).strip()
+            norm_range = _parse_norm_range(str(row.get(PERSONAL_NORMS_RANGE_HEADER, "")))
+            if not key or norm_range is None:
+                continue
+
+            overrides[key] = norm_range
+        return overrides
 
 
 def _safe_parse_date(raw_date: str) -> date:

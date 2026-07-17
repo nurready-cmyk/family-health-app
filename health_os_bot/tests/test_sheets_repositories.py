@@ -10,11 +10,13 @@ from database.sheets_repositories import (
     FAMILY_MEMBERS_HEADERS,
     KNOWLEDGE_BASE_HEADERS,
     LOGS_HEADERS,
+    NORMS_REFERENCE_HEADERS,
     USERS_HEADERS,
     AnalysesSheetsRepository,
     FamilyMembersSheetsRepository,
     KnowledgeBaseSheetsRepository,
     LogsSheetsRepository,
+    NormsSheetsRepository,
     UsersSheetsRepository,
 )
 
@@ -99,6 +101,25 @@ def test_family_members_repository_add_and_get_all():
     assert repo.get_by_id("nonexistent") is None
 
 
+def test_family_members_repository_generates_short_readable_id():
+    repo = make_repo(FamilyMembersSheetsRepository, FAMILY_MEMBERS_HEADERS)
+    adel = repo.add("Адель", "female", 2016)
+    salim = repo.add("Салим", "male", 2022)
+
+    assert adel.id == "adel"
+    assert salim.id == "salim"
+
+
+def test_family_members_repository_avoids_id_collision_for_namesakes():
+    repo = make_repo(FamilyMembersSheetsRepository, FAMILY_MEMBERS_HEADERS)
+    first = repo.add("Адель", "female", 2016)
+    second = repo.add("Адель", "female", 2018)
+
+    assert first.id != second.id
+    assert repo.get_by_id(first.id) is not None
+    assert repo.get_by_id(second.id) is not None
+
+
 # ---------- UsersSheetsRepository ----------
 
 
@@ -148,4 +169,56 @@ def test_analyses_repository_get_latest_values_takes_most_recent():
 
     latest = repo.get_latest_values("fm1")
     assert latest == {"hemoglobin": "135", "glucose": "5.2"}
+
+
+# ---------- NormsSheetsRepository ----------
+
+
+def _make_norms_repo() -> NormsSheetsRepository:
+    repo = NormsSheetsRepository.__new__(NormsSheetsRepository)
+    repo._worksheet = FakeWorksheet(NORMS_REFERENCE_HEADERS)
+    return repo
+
+
+def test_norms_repository_parses_filled_range():
+    repo = _make_norms_repo()
+    repo._worksheet.append_row(["Гемоглобин", "hemoglobin", "120-160", "110-150"])
+    repo._worksheet.append_row(["Глюкоза", "glucose", "", ""])  # пользователь ещё не заполнил норму
+
+    assert repo.get_catalog() == {
+        "hemoglobin": ("Гемоглобин", (120.0, 160.0), (110.0, 150.0)),
+        "glucose": ("Глюкоза", None, None),
+    }
+
+
+def test_norms_repository_applies_single_filled_column_to_both_genders():
+    repo = _make_norms_repo()
+    repo._worksheet.append_row(["АЛТ", "alt", "0-45", ""])
+
+    assert repo.get_catalog() == {"alt": ("АЛТ", (0.0, 45.0), (0.0, 45.0))}
+
+
+def test_norms_repository_ignores_malformed_range_text():
+    repo = _make_norms_repo()
+    repo._worksheet.append_row(["Глюкоза", "glucose", "не число", ""])
+
+    assert repo.get_catalog() == {"glucose": ("Глюкоза", None, None)}
+
+
+def test_norms_repository_includes_indicator_without_code_in_norms_dict():
+    # Пользователь добавил свой показатель (МНО), которого нет в core/norms.NORMS —
+    # каталог всё равно должен его вернуть, чтобы core/norms.py мог распознавать
+    # его в свободном тексте, даже без нормы.
+    repo = _make_norms_repo()
+    repo._worksheet.append_row(["МНО", "INR", "", ""])
+
+    assert repo.get_catalog() == {"INR": ("МНО", None, None)}
+
+
+def test_norms_repository_skips_rows_without_label_or_code():
+    repo = _make_norms_repo()
+    repo._worksheet.append_row(["", "orphan_code", "1-2", ""])
+    repo._worksheet.append_row(["Без кода", "", "1-2", ""])
+
+    assert repo.get_catalog() == {}
 

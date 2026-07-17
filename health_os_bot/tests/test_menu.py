@@ -4,7 +4,7 @@
 одноимённые slash-команды (/log, /analysis, /report, /add_rule).
 """
 
-from conftest import make_message_update
+from conftest import FakeNormsRepository, FakePersonalNormsRepository, make_message_update
 
 from core.analyses import AnalysisService
 from core.knowledge_base import KnowledgeBaseService
@@ -36,7 +36,9 @@ async def test_analysis_menu_button_starts_analysis_flow(
     make_dispatcher, bot, bot_session, mom, analyses_repo, knowledge_base_repo
 ):
     knowledge_base_service = KnowledgeBaseService(knowledge_base_repo)
-    analysis_service = AnalysisService(analyses_repo, knowledge_base_service)
+    analysis_service = AnalysisService(
+        analyses_repo, knowledge_base_service, FakeNormsRepository(), FakePersonalNormsRepository()
+    )
     dispatcher = make_dispatcher(analysis_service=analysis_service, knowledge_base_service=knowledge_base_service)
 
     await dispatcher.feed_update(bot, make_message_update(222, 1, text="📊 Анализы"))
@@ -48,7 +50,9 @@ async def test_report_menu_button_starts_report_flow(
     make_dispatcher, bot, bot_session, mom, analyses_repo, knowledge_base_repo
 ):
     knowledge_base_service = KnowledgeBaseService(knowledge_base_repo)
-    analysis_service = AnalysisService(analyses_repo, knowledge_base_service)
+    analysis_service = AnalysisService(
+        analyses_repo, knowledge_base_service, FakeNormsRepository(), FakePersonalNormsRepository()
+    )
     dispatcher = make_dispatcher(analysis_service=analysis_service, knowledge_base_service=knowledge_base_service)
 
     await dispatcher.feed_update(bot, make_message_update(222, 1, text="📈 Отчёт"))

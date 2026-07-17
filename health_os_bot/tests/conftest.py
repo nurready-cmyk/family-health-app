@@ -27,6 +27,8 @@ from database.interfaces import (
     KnowledgeBaseRepository,
     LogsRepository,
     MedicalDataRepository,
+    NormsRepository,
+    PersonalNormsRepository,
     UsersRepository,
 )
 from database.models import AnalysisEntry, FamilyMember, KnowledgeRule, LogEntry, MedicalRecord, User
@@ -145,6 +147,31 @@ class FakeAnalysesRepository(AnalysesRepository):
         return [e for e in self.items if e.family_member_id == family_member_id]
 
 
+class FakeNormsRepository(NormsRepository):
+    """По умолчанию пустой справочник — тесты норм используют значения из
+    core/norms.py. Тест может подставить свои строки через .catalog перед
+    вызовом сервиса: {indicator_key: (label, норма_мужчины|None, норма_женщины|None)}.
+    """
+
+    def __init__(self) -> None:
+        self.catalog: dict[str, tuple[str, tuple[float, float] | None, tuple[float, float] | None]] = {}
+
+    def get_catalog(self):
+        return dict(self.catalog)
+
+
+class FakePersonalNormsRepository(PersonalNormsRepository):
+    """По умолчанию без персональных норм. Тест может подставить их через
+    .overrides_by_member[family_member_id] перед вызовом сервиса.
+    """
+
+    def __init__(self) -> None:
+        self.overrides_by_member: dict[str, dict[str, tuple[float, float]]] = {}
+
+    def get_overrides(self, family_member_id):
+        return dict(self.overrides_by_member.get(family_member_id, {}))
+
+
 # ---------- Fixtures репозиториев ----------
 
 
@@ -179,8 +206,25 @@ def analyses_repo() -> FakeAnalysesRepository:
 
 
 @pytest.fixture
+def norms_repo() -> FakeNormsRepository:
+    return FakeNormsRepository()
+
+
+@pytest.fixture
+def personal_norms_repo() -> FakePersonalNormsRepository:
+    return FakePersonalNormsRepository()
+
+
+@pytest.fixture
 def repositories(
-    family_members_repo, users_repo, logs_repo, medical_data_repo, knowledge_base_repo, analyses_repo
+    family_members_repo,
+    users_repo,
+    logs_repo,
+    medical_data_repo,
+    knowledge_base_repo,
+    analyses_repo,
+    norms_repo,
+    personal_norms_repo,
 ) -> Repositories:
     return Repositories(
         family_members=family_members_repo,
@@ -189,12 +233,32 @@ def repositories(
         medical_data=medical_data_repo,
         knowledge_base=knowledge_base_repo,
         analyses=analyses_repo,
+        norms=norms_repo,
+        personal_norms=personal_norms_repo,
     )
 
 
 @pytest.fixture
 def access_service(users_repo, family_members_repo) -> AccessService:
     return AccessService(users_repo, family_members_repo)
+
+
+@pytest.fixture(autouse=True)
+def _reset_norm_overrides():
+    """core.norms._norm_overrides и _custom_indicators — глобальное состояние
+    (см. set_norm_overrides/set_custom_indicators).
+
+    Сбрасываем до и после каждого теста, чтобы переопределение норм или
+    добавленный "свой" показатель в одном тесте не просачивались в соседние
+    независимо от порядка запуска.
+    """
+    from core.norms import set_custom_indicators, set_norm_overrides
+
+    set_norm_overrides({})
+    set_custom_indicators({})
+    yield
+    set_norm_overrides({})
+    set_custom_indicators({})
 
 
 @pytest.fixture

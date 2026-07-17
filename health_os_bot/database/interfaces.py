@@ -120,3 +120,34 @@ class AnalysesRepository(ABC):
     def get_by_family_member_id(self, family_member_id: str) -> list[AnalysisEntry]:
         """Вернуть всю историю анализов члена семьи."""
 
+
+class NormsRepository(ABC):
+    """Полный справочник показателей из листа Справочник_Анализов — и
+    переопределения нормы для встроенных показателей, и показатели,
+    добавленные пользователем с нуля (которых нет в core/norms.NORMS)."""
+
+    @abstractmethod
+    def get_catalog(self) -> dict[str, tuple[str, Optional[tuple[float, float]], Optional[tuple[float, float]]]]:
+        """Вернуть {indicator_key: (русское_название, норма_мужчины|None, норма_женщины|None)}
+        для каждой строки листа, где заполнены название и код. Норма может
+        быть не задана (тогда элементы 1 и 2 — None) — например, пользователь
+        только что добавил новый показатель и ещё не вписал для него норму.
+        """
+
+
+class PersonalNormsRepository(ABC):
+    """Нормы конкретного члена семьи (например, ребёнка) из листа Личные_Нормы.
+
+    В отличие от NormsRepository (общая норма по полу), здесь норма привязана
+    к конкретному family_member_id — нужна для случаев, когда норма зависит
+    не только от пола, но и от возраста (дети) или другой индивидуальной
+    особенности. Имеет приоритет над NormsRepository.
+    """
+
+    @abstractmethod
+    def get_overrides(self, family_member_id: str) -> dict[str, tuple[float, float]]:
+        """Вернуть {indicator_key: (мин, макс)} — персональные нормы этого
+        члена семьи. Показатели без вписанной персональной нормы в результат
+        не попадают.
+        """
+

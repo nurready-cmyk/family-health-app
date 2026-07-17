@@ -46,13 +46,77 @@ class NormCheckResult(NamedTuple):
     unit: str
 
 
-def check_norm(indicator_key: str, value: float, gender: str) -> Optional[NormCheckResult]:
-    """Сравнить значение показателя с нормой по полу. None, если показатель неизвестен."""
-    norm = NORMS.get(indicator_key)
-    if norm is None:
-        return None
+class CustomIndicator(NamedTuple):
+    """Показатель, которого нет в NORMS — пользователь добавил его сам в
+    Справочник_Анализов (например МНО). Норма может быть ещё не задана."""
 
-    min_value, max_value = norm.female if gender == "female" else norm.male
+    label: str
+    male_range: Optional[tuple[float, float]]
+    female_range: Optional[tuple[float, float]]
+
+
+# Нормы, которые пользователь вписал сам в Справочник_Анализов (колонки "Норма
+# (мужчины)"/"Норма (женщины)") для показателей, УЖЕ известных коду (есть в
+# NORMS) — {indicator_key: (мужской диапазон, женский диапазон)}.
+_norm_overrides: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {}
+
+# Показатели, которых нет в NORMS вообще — пользователь добавил их сам в
+# Справочник_Анализов с нуля (новое русское название + свой код).
+_custom_indicators: dict[str, CustomIndicator] = {}
+
+
+def set_norm_overrides(overrides: dict[str, tuple[tuple[float, float], tuple[float, float]]]) -> None:
+    global _norm_overrides
+    _norm_overrides = overrides
+
+
+def set_custom_indicators(custom_indicators: dict[str, CustomIndicator]) -> None:
+    """Обновляется перед каждым /analysis и /report (см. core/analyses.py),
+    поэтому новые строки в Справочник_Анализов подхватываются без
+    перезапуска бота — и для распознавания в тексте, и для сверки с нормой.
+    """
+    global _custom_indicators
+    _custom_indicators = custom_indicators
+
+
+def get_indicator_label(indicator_key: str) -> str:
+    """Русское название показателя для отображения — из NORMS или из
+    пользовательского справочника. Сырой код — крайний случай (не должен
+    происходить, если показатель вообще был распознан при вводе)."""
+    if indicator_key in NORMS:
+        return NORMS[indicator_key].label
+    custom = _custom_indicators.get(indicator_key)
+    return custom.label if custom else indicator_key
+
+
+def get_indicator_unit(indicator_key: str) -> str:
+    """Единица измерения — известна только для встроенных показателей;
+    для добавленных пользователем в таблице колонки под единицу нет."""
+    return NORMS[indicator_key].unit if indicator_key in NORMS else ""
+
+
+def check_norm(indicator_key: str, value: float, gender: str) -> Optional[NormCheckResult]:
+    """Сравнить значение показателя с нормой по полу.
+
+    Сначала пробует NORMS (+ _norm_overrides поверх, если пользователь
+    переопределил встроенную норму). Если показателя нет в NORMS вообще —
+    пробует _custom_indicators (показатель, добавленный только в таблице).
+    None, если показатель не распознан нигде, либо норма для него ещё не
+    задана нигде (тогда значение всё равно сохраняется, просто без статуса).
+    """
+    norm = NORMS.get(indicator_key)
+    if norm is not None:
+        male_range, female_range = _norm_overrides.get(indicator_key, (norm.male, norm.female))
+        label, unit = norm.label, norm.unit
+    else:
+        custom = _custom_indicators.get(indicator_key)
+        if custom is None or (custom.male_range is None and custom.female_range is None):
+            return None
+        male_range = custom.male_range or custom.female_range
+        female_range = custom.female_range or custom.male_range
+        label, unit = custom.label, ""
+
+    min_value, max_value = female_range if gender == "female" else male_range
     if value < min_value:
         status = "low"
     elif value > max_value:
@@ -60,7 +124,7 @@ def check_norm(indicator_key: str, value: float, gender: str) -> Optional[NormCh
     else:
         status = "normal"
 
-    return NormCheckResult(status=status, min=min_value, max=max_value, label=norm.label, unit=norm.unit)
+    return NormCheckResult(status=status, min=min_value, max=max_value, label=label, unit=unit)
 
 
 # Русские слова, которыми member семьи, скорее всего, назовёт показатель в
@@ -89,7 +153,10 @@ INDICATOR_ALIASES: dict[str, list[str]] = {
 
 
 def match_indicator_key(text: str) -> Optional[str]:
-    """Сопоставить свободно введённое название показателя с ключом NORMS.
+    """Сопоставить свободно введённое название показателя с ключом NORMS
+    либо с показателем, которого нет в коде, но пользователь добавил его
+    сам в Справочник_Анализов (см. _custom_indicators) — русское название
+    из таблицы работает как алиас, например "МНО".
 
     Побеждает самый длинный алиас, чтобы "холестерин общий" не потерялся
     за более коротким "холестерин".
@@ -103,6 +170,12 @@ def match_indicator_key(text: str) -> Optional[str]:
             if alias in normalized and len(alias) > best_length:
                 best_key = key
                 best_length = len(alias)
+
+    for key, custom in _custom_indicators.items():
+        alias = custom.label.lower()
+        if alias in normalized and len(alias) > best_length:
+            best_key = key
+            best_length = len(alias)
 
     return best_key
 

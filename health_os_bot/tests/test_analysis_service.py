@@ -14,8 +14,8 @@ def knowledge_base_service(knowledge_base_repo) -> KnowledgeBaseService:
 
 
 @pytest.fixture
-def service(analyses_repo, knowledge_base_service) -> AnalysisService:
-    return AnalysisService(analyses_repo, knowledge_base_service)
+def service(analyses_repo, knowledge_base_service, norms_repo, personal_norms_repo) -> AnalysisService:
+    return AnalysisService(analyses_repo, knowledge_base_service, norms_repo, personal_norms_repo)
 
 
 def test_record_analysis_saves_each_indicator(service, access_service, mom, analyses_repo):
@@ -111,4 +111,80 @@ def test_get_current_status_denies_access_to_someone_elses_data(service, access_
     context = access_service.resolve(222)
     with pytest.raises(AccessDeniedError):
         service.get_current_status(context, dad.id)
+
+
+def test_record_analysis_uses_custom_norm_from_reference_sheet(service, access_service, mom, norms_repo):
+    # Пользователь вписал в Справочник_Анализов свою норму гемоглобина (100-200) —
+    # значение, которое по умолчанию считалось бы "low", должно стать "normal".
+    norms_repo.catalog["hemoglobin"] = ("Гемоглобин", (100.0, 200.0), (100.0, 200.0))
+    context = access_service.resolve(222)
+
+    result = service.record_analysis(context, mom.id, {"hemoglobin": 125.0}, "2026-07-01")
+
+    assert result.readings[0].norm_check.status == "normal"
+
+
+def test_record_analysis_uses_personal_norm_for_child(service, access_service, mom, personal_norms_repo):
+    # Персональная норма (например, детская) должна побеждать и общую
+    # Справочник_Анализов, и встроенный дефолт из core/norms.py.
+    personal_norms_repo.overrides_by_member[mom.id] = {"hemoglobin": (100.0, 200.0)}
+    context = access_service.resolve(222)
+
+    result = service.record_analysis(context, mom.id, {"hemoglobin": 125.0}, "2026-07-01")
+
+    assert result.readings[0].norm_check.status == "normal"
+
+
+def test_personal_norm_does_not_leak_to_other_family_members(
+    service, access_service, mom, dad, personal_norms_repo
+):
+    personal_norms_repo.overrides_by_member[mom.id] = {"hemoglobin": (100.0, 200.0)}
+    dad_context = access_service.resolve(111)
+
+    result = service.record_analysis(dad_context, dad.id, {"hemoglobin": 125.0}, "2026-07-01")
+
+    # У папы своей персональной нормы нет — используется общий дефолт (125 = low для male)
+    assert result.readings[0].norm_check.status == "low"
+
+
+def test_personal_norm_overrides_general_reference_sheet_norm(
+    service, access_service, mom, norms_repo, personal_norms_repo
+):
+    norms_repo.catalog["hemoglobin"] = ("Гемоглобин", (90.0, 110.0), (90.0, 110.0))  # сделало бы 125 "high"
+    personal_norms_repo.overrides_by_member[mom.id] = {"hemoglobin": (100.0, 200.0)}  # 125 = normal
+    context = access_service.resolve(222)
+
+    result = service.record_analysis(context, mom.id, {"hemoglobin": 125.0}, "2026-07-01")
+
+    assert result.readings[0].norm_check.status == "normal"
+
+
+def test_parse_indicators_recognizes_custom_indicator_added_by_user(service, norms_repo):
+    # Пользователь добавил "МНО" в Справочник_Анализов — показателя вообще
+    # нет в core/norms.NORMS, но текст должен распознаваться по русскому названию.
+    norms_repo.catalog["INR"] = ("МНО", None, None)
+
+    indicators = service.parse_indicators("мно 1.4")
+
+    assert indicators == {"INR": 1.4}
+
+
+def test_record_analysis_saves_custom_indicator_without_norm_status(service, access_service, mom, norms_repo):
+    norms_repo.catalog["INR"] = ("МНО", None, None)
+    context = access_service.resolve(222)
+
+    result = service.record_analysis(context, mom.id, {"INR": 1.4}, "2026-07-01")
+
+    # Норма не задана — значение сохранено, но статуса нет (не ломается, просто не оценивается)
+    assert result.readings[0].value == 1.4
+    assert result.readings[0].norm_check is None
+
+
+def test_record_analysis_checks_custom_indicator_against_its_own_norm(service, access_service, mom, norms_repo):
+    norms_repo.catalog["INR"] = ("МНО", (0.8, 1.2), (0.8, 1.2))
+    context = access_service.resolve(222)
+
+    result = service.record_analysis(context, mom.id, {"INR": 1.4}, "2026-07-01")
+
+    assert result.readings[0].norm_check.status == "high"
 

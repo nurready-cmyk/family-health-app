@@ -21,6 +21,8 @@ from database.interfaces import (
     KnowledgeBaseRepository,
     LogsRepository,
     MedicalDataRepository,
+    NormsRepository,
+    PersonalNormsRepository,
     UsersRepository,
 )
 
@@ -35,6 +37,8 @@ class Repositories:
     medical_data: MedicalDataRepository
     knowledge_base: KnowledgeBaseRepository
     analyses: AnalysesRepository
+    norms: NormsRepository
+    personal_norms: PersonalNormsRepository
 
 
 def build_repositories(credentials_path: str, spreadsheet_id: str) -> Repositories:
@@ -46,6 +50,8 @@ def build_repositories(credentials_path: str, spreadsheet_id: str) -> Repositori
         KnowledgeBaseSheetsRepository,
         LogsSheetsRepository,
         MedicalDataSheetsRepository,
+        NormsSheetsRepository,
+        PersonalNormsSheetsRepository,
         UsersSheetsRepository,
     )
 
@@ -57,5 +63,7 @@ def build_repositories(credentials_path: str, spreadsheet_id: str) -> Repositori
         medical_data=MedicalDataSheetsRepository(client),
         knowledge_base=KnowledgeBaseSheetsRepository(client),
         analyses=AnalysesSheetsRepository(client),
+        norms=NormsSheetsRepository(client),
+        personal_norms=PersonalNormsSheetsRepository(client),
     )
 

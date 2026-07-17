@@ -3,7 +3,7 @@
 Ключевой сценарий: личное правило проверяется раньше общей рекомендации.
 """
 
-from conftest import make_callback_update, make_message_update
+from conftest import FakeNormsRepository, FakePersonalNormsRepository, make_callback_update, make_message_update
 
 from core.analyses import AnalysisService
 from core.knowledge_base import KnowledgeBaseService
@@ -11,7 +11,9 @@ from core.knowledge_base import KnowledgeBaseService
 
 def _services(analyses_repo, knowledge_base_repo):
     knowledge_base_service = KnowledgeBaseService(knowledge_base_repo)
-    analysis_service = AnalysisService(analyses_repo, knowledge_base_service)
+    analysis_service = AnalysisService(
+        analyses_repo, knowledge_base_service, FakeNormsRepository(), FakePersonalNormsRepository()
+    )
     return knowledge_base_service, analysis_service
 
 
