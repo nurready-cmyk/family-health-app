@@ -5,10 +5,16 @@
 ObjC.import('Foundation');
 
 function readFile(path) {
-  return $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null).js;
+  var text = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null);
+  if (!text || !text.js) {
+    throw new Error('Не найден файл ' + path + '. Запускать из папки health_os_gas.');
+  }
+  return text.js;
 }
 
-var BASE = '/Users/nurland/Documents/БИЗНЕС/Архив/HealthApp/health_os_gas/';
+// Пути относительные — тесты запускаются из папки health_os_gas
+// (см. README). Абсолютный путь был вшит в файл и сломался при переносе папки.
+var BASE = $.NSFileManager.defaultManager.currentDirectoryPath.js + '/';
 
 // --- Заглушки Google Apps Script ---
 var Utilities = {
@@ -40,10 +46,14 @@ var mainSrc = readFile(BASE + 'Main.gs');
 var dateFn = mainSrc.match(/function parseFlexibleDate_[\s\S]*?\n}\n/)[0];
 eval(dateFn);
 
-// Из Sheets.gs — только slugifyName_.
+// Из Sheets.gs — normalizeDate_ (сортировка дат в широком листе Analyses).
 var sheetsSrc = readFile(BASE + 'Sheets.gs');
-var slugFn = sheetsSrc.match(/function slugifyName_[\s\S]*?\n}\n/)[0];
-eval(slugFn);
+eval(sheetsSrc.match(/function normalizeDate_[\s\S]*?\n}\n/)[0]);
+
+// Из Entry.gs — транслитерация кода нового показателя.
+var entrySrc = readFile(BASE + 'Entry.gs');
+eval(entrySrc.match(/function transliterate_[\s\S]*?\n}\n/)[0]);
+eval(entrySrc.match(/function uniqueIndicatorKey_[\s\S]*?\n}\n/)[0]);
 
 // --- Мини-фреймворк ---
 var passed = 0, failed = 0, log = [];
@@ -131,11 +141,23 @@ eq('ГГГГ-ММ-ДД', parseFlexibleDate_('2025-07-15'), '2025-07-15');
 eq('несуществующая дата', parseFlexibleDate_('32.13.2025'), null);
 eq('мусор вместо даты', parseFlexibleDate_('вчера'), null);
 
-// ---------- slugifyName_ ----------
-eq('Адель → adel', slugifyName_('Адель'), 'adel');
-eq('Салим → salim', slugifyName_('Салим'), 'salim');
-eq('Нурлан → nurla (5 симв.)', slugifyName_('Нурлан'), 'nurla');
-eq('Гульнара → gulna', slugifyName_('Гульнара'), 'gulna');
+// ---------- normalizeDate_ ----------
+// Ключевой момент широкого листа: дату Google Sheets может отдать объектом
+// Date, а не строкой. Без приведения «последним» анализом становился не тот.
+eq('дата-текст ISO', normalizeDate_('2025-07-15'), '2025-07-15');
+eq('дата-текст ДД.ММ.ГГГГ', normalizeDate_('15.07.2025'), '2025-07-15');
+eq('дата объектом Date', normalizeDate_(new Date(2025, 6, 15)), '2025-07-15');
+eq('пустая ячейка', normalizeDate_(''), '');
+eq('сортировка: 2025-07-15 > 2025-06-10',
+   normalizeDate_(new Date(2025, 6, 15)) > normalizeDate_('10.06.2025'), true);
+
+// ---------- Код нового показателя из справочника ----------
+eq('Мочевина → mochevina', transliterate_('Мочевина'), 'mochevina');
+eq('МНО → mno', transliterate_('МНО'), 'mno');
+eq('С-реактивный белок', transliterate_('С-реактивный белок'), 's_reaktivnyy_belok');
+eq('Витамин B12 (латиница+цифры)', transliterate_('Витамин B12'), 'vitamin_b12');
+eq('код не повторяется', uniqueIndicatorKey_('МНО', ['mno']), 'mno_2');
+eq('свободный код без суффикса', uniqueIndicatorKey_('МНО', ['alt']), 'mno');
 
 // ---------- Итог ----------
 var out = '\n' + (failed ? log.join('\n') + '\n\n' : '') +

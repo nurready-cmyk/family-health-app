@@ -50,7 +50,8 @@ var INDICATOR_ALIASES = {
 // Состояние, которое подтягивается из таблицы перед каждым разбором/сверкой.
 // Аналог _norm_overrides / _custom_indicators в Python-версии.
 var _normOverrides = {};      // { key: { male:[min,max], female:[min,max] } } — для встроенных
-var _customIndicators = {};   // { key: { label, male:[min,max]|null, female:[min,max]|null } } — свои
+var _customIndicators = {};   // { key: { label, unit, male:[min,max]|null, female:[min,max]|null } } — свои
+var _unitOverrides = {};      // { key: 'ммоль/л' } — колонка «Единицы» справочника
 
 /** «120-155» → [120, 155]; пусто/мусор → null. */
 function parseNormRange_(text) {
@@ -68,6 +69,7 @@ function parseNormRange_(text) {
 function refreshCatalog_(memberId) {
   _normOverrides = {};
   _customIndicators = {};
+  _unitOverrides = {};
 
   readAll_(SHEET_CATALOG).forEach(function (row) {
     var key = String(row['Код (indicator_key)'] || '').trim();
@@ -78,10 +80,13 @@ function refreshCatalog_(memberId) {
     var female = parseNormRange_(row['Норма (женщины)']);
     if (male || female) { male = male || female; female = female || male; }
 
+    var unit = String(row['Единицы'] || '').trim();
+    if (unit) _unitOverrides[key] = unit;
+
     if (NORMS[key]) {
       if (male || female) _normOverrides[key] = { male: male, female: female };
     } else {
-      _customIndicators[key] = { label: label, male: male, female: female };
+      _customIndicators[key] = { label: label, unit: unit, male: male, female: female };
     }
   });
 
@@ -94,7 +99,14 @@ function refreshCatalog_(memberId) {
     if (!key || !range) return;
     // Личная норма перекрывает всё остальное (одна на оба пола).
     if (NORMS[key]) _normOverrides[key] = { male: range, female: range };
-    else _customIndicators[key] = { label: _customIndicators[key] ? _customIndicators[key].label : key, male: range, female: range };
+    else {
+      var known = _customIndicators[key];
+      _customIndicators[key] = {
+        label: known ? known.label : key,
+        unit: known ? known.unit : '',
+        male: range, female: range
+      };
+    }
   });
 }
 
@@ -105,8 +117,12 @@ function indicatorLabel_(key) {
   return key;
 }
 
+/** Единицы: колонка «Единицы» справочника важнее встроенных. */
 function indicatorUnit_(key) {
-  return NORMS[key] ? NORMS[key].unit : '';
+  if (_unitOverrides[key]) return _unitOverrides[key];
+  if (NORMS[key]) return NORMS[key].unit;
+  if (_customIndicators[key]) return _customIndicators[key].unit || '';
+  return '';
 }
 
 /**
@@ -125,7 +141,7 @@ function checkNorm_(key, value, gender) {
     var c = _customIndicators[key];
     if (!c.male && !c.female) return null;
     range = gender === 'female' ? (c.female || c.male) : (c.male || c.female);
-    label = c.label; unit = '';
+    label = c.label; unit = indicatorUnit_(key);
   } else {
     return null;
   }

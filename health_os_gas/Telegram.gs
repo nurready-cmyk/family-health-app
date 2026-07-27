@@ -22,6 +22,19 @@ function tgCall_(method, payload) {
   return JSON.parse(res.getContentText());
 }
 
+/**
+ * Экранировать текст, который пришёл от человека или от модели, перед вставкой
+ * в сообщение с parse_mode: HTML. Без этого «гемоглобин <120» в личном правиле
+ * или расшифровка голоса со знаком «<» ломает разбор на стороне Telegram —
+ * сообщение просто не доходит, и бот выглядит зависшим.
+ */
+function esc_(text) {
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function sendMessage(chatId, text, replyMarkup) {
   var payload = { chat_id: chatId, text: text, parse_mode: 'HTML' };
   if (replyMarkup) payload.reply_markup = replyMarkup;

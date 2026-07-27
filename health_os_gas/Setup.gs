@@ -21,31 +21,26 @@ function setup() {
   if (missing.length) {
     Logger.log('ВНИМАНИЕ: не найдены листы: ' + missing.join(', '));
   } else {
-    Logger.log('Все нужные листы на месте. Дальше — setWebhook().');
+    Logger.log('Все нужные листы на месте. Дальше — startPolling().');
   }
 }
 
 /**
- * Шаг 2. Сказать Telegram, куда слать сообщения.
- * ВАЖНО: сначала «Начать развёртывание» → «Веб-приложение», скопировать URL
- * и вставить его ниже вместо WEB_APP_URL_СЮДА.
+ * Шаг 2. Включить бота — см. startPolling() в Polling.gs.
+ *
+ * Функции setWebhook здесь больше нет. Webhook на Apps Script не работает:
+ * Google на любой запрос отвечает редиректом 302, Telegram считает доставку
+ * неудачной и присылает то же сообщение снова — так однажды и получилось
+ * 30 приветствий подряд. Бот забирает сообщения сам через getUpdates.
  */
-function setWebhook() {
-  var url = 'WEB_APP_URL_СЮДА';
-  if (url.indexOf('http') !== 0) {
-    throw new Error('Сначала вставьте URL веб-приложения в функцию setWebhook().');
-  }
-  var res = tgCall_('setWebhook', { url: url, drop_pending_updates: true });
-  Logger.log(JSON.stringify(res));
-}
 
-/** Проверка: куда сейчас Telegram шлёт сообщения и нет ли ошибок. */
+/** Проверка: не остался ли где-то webhook (он ломает getUpdates ошибкой 409). */
 function getWebhookInfo() {
   var res = UrlFetchApp.fetch('https://api.telegram.org/bot' + getBotToken_() + '/getWebhookInfo');
   Logger.log(res.getContentText());
 }
 
-/** Аварийно отключить webhook (например, чтобы вернуться к Python-боту на Mac). */
+/** Снять webhook. Вызывается автоматически из startPolling(). */
 function deleteWebhook() {
   Logger.log(JSON.stringify(tgCall_('deleteWebhook', {})));
 }

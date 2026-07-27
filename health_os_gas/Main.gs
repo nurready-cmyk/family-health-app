@@ -1,17 +1,14 @@
-// ===== ТОЧКА ВХОДА И ДИАЛОГИ =====
-// doPost — единственный вход: Telegram присылает сюда каждое сообщение
-// (webhook). Состояние диалога живёт в листе Sessions, т.к. Apps Script
-// ничего не помнит между запросами.
-
-function doPost(e) {
-  try {
-    var update = JSON.parse(e.postData.contents);
-    handleUpdate_(update);
-  } catch (err) {
-    Logger.log('Ошибка: ' + err + '\n' + (err.stack || ''));
-  }
-  return ContentService.createTextOutput('ok');
-}
+// ===== ДИАЛОГИ =====
+// Единственный вход — poll() из Polling.gs, который раз в минуту забирает
+// новые сообщения через getUpdates. Состояние диалога живёт в листе Sessions,
+// т.к. Apps Script ничего не помнит между запусками.
+//
+// Функции doPost здесь намеренно нет. Webhook на Apps Script всё равно не
+// работает (Google отвечает редиректом 302, Telegram считает доставку
+// неудачной и шлёт сообщение снова), а открытый на «у всех» веб-эндпоинт
+// принимал бы поддельные апдейты: достаточно было подставить чужой
+// message.from.id и свой message.chat.id, чтобы получить в свой чат отчёт по
+// здоровью всей семьи. Транспорт только исходящий — подделать нечего.
 
 function handleUpdate_(update) {
   var u = parseUpdate_(update);
@@ -34,7 +31,7 @@ function handleUpdate_(update) {
   // /start и /cancel работают всегда, обрывая любой незаконченный диалог.
   if (u.text === '/start') {
     clearSession_(u.chatId);
-    sendMessage(u.chatId, 'С возвращением, ' + access.user.name + '! Выберите действие в меню внизу.', mainMenuKeyboard());
+    sendMessage(u.chatId, 'С возвращением, ' + esc_(access.user.name) + '! Выберите действие в меню внизу.', mainMenuKeyboard());
     return;
   }
   if (u.text === '/cancel') {
@@ -174,7 +171,9 @@ function continueFlow_(u, access, session) {
 
   // Выбор члена семьи кнопкой — общий шаг для всех сценариев.
   if (u.callbackData && u.callbackData.indexOf('member:') === 0) {
-    data.memberId = u.callbackData.split(':')[1];
+    // substring, а не split(':') — id теперь это имя, а в имени может
+    // оказаться двоеточие.
+    data.memberId = u.callbackData.substring('member:'.length);
     if (!canActFor_(access, data.memberId)) {
       sendMessage(u.chatId, 'Нет прав действовать за этого члена семьи.');
       clearSession_(u.chatId);
@@ -242,7 +241,7 @@ function continueFlow_(u, access, session) {
       if (isNaN(y)) { sendMessage(u.chatId, 'Нужен год числом, например 2016.'); return; }
       var added = addFamilyMember_(data.name, data.gender, y);
       clearSession_(u.chatId);
-      sendMessage(u.chatId, '✅ Добавлен: ' + added.name + ' (id: ' + added.id + ')', mainMenuKeyboard());
+      sendMessage(u.chatId, '✅ Добавлен: ' + esc_(added.name), mainMenuKeyboard());
       return;
 
     // --- Дневник ---
@@ -256,7 +255,7 @@ function continueFlow_(u, access, session) {
       data.value = u.text;
       setSession_(u.chatId, 'log:notes', data);
       sendMessage(u.chatId,
-        'Записал: ' + METRIC_LABELS[data.metricType] + ' = ' + data.value + '\n\n' +
+        'Записал: ' + METRIC_LABELS[data.metricType] + ' = ' + esc_(data.value) + '\n\n' +
         'Заметка — необязательный комментарий с контекстом (например «после хорошего сна»). Если добавить нечего, отправьте «-».');
       return;
     case 'log:notes':
@@ -302,7 +301,7 @@ function continueFlow_(u, access, session) {
     case 'exam:summary':
       addMedicalRecord_(data.date, data.memberId, data.eventType, u.text, '');
       clearSession_(u.chatId);
-      sendMessage(u.chatId, '✅ Записано (' + data.date + '): ' + data.eventType, mainMenuKeyboard());
+      sendMessage(u.chatId, '✅ Записано (' + data.date + '): ' + esc_(data.eventType), mainMenuKeyboard());
       return;
 
     // --- Личное правило ---
@@ -351,10 +350,7 @@ function recordAnalysis_(u, access, memberId, indicators, entryDate) {
   if (!member) { sendMessage(u.chatId, 'Нет прав вносить данные за этого члена семьи.'); return; }
 
   refreshCatalog_(memberId);
-
-  Object.keys(indicators).forEach(function (key) {
-    addAnalysis_(memberId, entryDate, key, String(indicators[key]));
-  });
+  addAnalyses_(memberId, entryDate, indicators);
 
   var lines = [];
   var abnormal = [];
@@ -363,7 +359,7 @@ function recordAnalysis_(u, access, memberId, indicators, entryDate) {
     var check = checkNorm_(key, value, member.gender);
     var status = check ? ({ normal: '✅ норма', low: '⬇️ ниже нормы', high: '⬆️ выше нормы' })[check.status] : '';
     if (check && check.status !== 'normal') abnormal.push(key);
-    lines.push('• ' + indicatorLabel_(key) + ': <b>' + value + '</b> ' + indicatorUnit_(key) + (status ? ' — ' + status : ''));
+    lines.push('• ' + esc_(indicatorLabel_(key)) + ': <b>' + esc_(value) + '</b> ' + esc_(indicatorUnit_(key)) + (status ? ' — ' + status : ''));
   });
 
   var text = '📊 Записал (' + entryDate + '):\n' + lines.join('\n');
@@ -391,10 +387,10 @@ function sendReport_(u, access, memberId) {
     var check = checkNorm_(key, value, member.gender);
     var status = check ? ({ normal: '✅ норма', low: '⬇️ ниже нормы', high: '⬆️ выше нормы' })[check.status] : '';
     if (check && check.status !== 'normal') abnormal.push(key);
-    lines.push('• ' + indicatorLabel_(key) + ': <b>' + value + '</b> ' + indicatorUnit_(key) + (status ? ' — ' + status : ''));
+    lines.push('• ' + esc_(indicatorLabel_(key)) + ': <b>' + value + '</b> ' + esc_(indicatorUnit_(key)) + (status ? ' — ' + status : ''));
   });
 
-  var text = '📋 Текущие показатели — ' + member.name + ':\n' + lines.join('\n');
+  var text = '📋 Текущие показатели — ' + esc_(member.name) + ':\n' + lines.join('\n');
   text += recommendationsBlock_(memberId, member.gender, abnormal);
   sendMessage(u.chatId, text, mainMenuKeyboard());
 }
@@ -405,7 +401,7 @@ function recommendationsBlock_(memberId, gender, abnormalKeys) {
   var personal = getMatchingPersonalRules_(memberId, abnormalKeys);
   if (personal.length) {
     block += '\n\n🧠 Из ваших личных заметок:\n' +
-      personal.map(function (r) { return '• ' + r.rule_text; }).join('\n');
+      personal.map(function (r) { return '• ' + esc_(r.rule_text); }).join('\n');
   }
   var general = getActiveRecommendations_(getLatestValues_(memberId), gender);
   if (general.length) {
@@ -427,13 +423,13 @@ function handleVoice_(u, access) {
   try {
     text = transcribeVoice_(u.voiceFileId);
   } catch (e) {
-    sendMessage(u.chatId, 'Не удалось расшифровать голос: ' + e.message);
+    sendMessage(u.chatId, 'Не удалось расшифровать голос: ' + esc_(e.message));
     return;
   }
 
   var metric = extractMetricFromText_(text);
   if (!metric) {
-    sendMessage(u.chatId, 'Расшифровал:\n<i>' + text + '</i>\n\nНо не понял, что записать. Попробуйте кнопки меню.', mainMenuKeyboard());
+    sendMessage(u.chatId, 'Расшифровал:\n<i>' + esc_(text) + '</i>\n\nНо не понял, что записать. Попробуйте кнопки меню.', mainMenuKeyboard());
     return;
   }
 
@@ -445,15 +441,15 @@ function handleVoice_(u, access) {
     sendVoiceConfirm_(u, data);
   } else {
     setSession_(u.chatId, 'voice:member', data);
-    sendMessage(u.chatId, 'Расшифровал:\n<i>' + text + '</i>\n\nЗа кого записать?', membersKeyboard(access.allowedMembers));
+    sendMessage(u.chatId, 'Расшифровал:\n<i>' + esc_(text) + '</i>\n\nЗа кого записать?', membersKeyboard(access.allowedMembers));
   }
 }
 
 function sendVoiceConfirm_(u, data) {
   sendMessage(u.chatId,
-    'Расшифровал:\n<i>' + data.transcript + '</i>\n\n' +
-    'Записать?\n' + METRIC_LABELS[data.metricType] + ': <b>' + data.value + '</b>' +
-    (data.notes ? '\nЗаметка: ' + data.notes : ''),
+    'Расшифровал:\n<i>' + esc_(data.transcript) + '</i>\n\n' +
+    'Записать?\n' + METRIC_LABELS[data.metricType] + ': <b>' + esc_(data.value) + '</b>' +
+    (data.notes ? '\nЗаметка: ' + esc_(data.notes) : ''),
     confirmKeyboard());
 }
 
@@ -463,7 +459,7 @@ function handlePhoto_(u, access) {
   try {
     summary = summarizePhoto_(u.photoFileId);
   } catch (e) {
-    sendMessage(u.chatId, 'Не удалось разобрать фото: ' + e.message);
+    sendMessage(u.chatId, 'Не удалось разобрать фото: ' + esc_(e.message));
     return;
   }
 
@@ -475,12 +471,12 @@ function handlePhoto_(u, access) {
     sendPhotoConfirm_(u, data);
   } else {
     setSession_(u.chatId, 'photo:member', data);
-    sendMessage(u.chatId, 'Вот что вижу:\n<i>' + summary + '</i>\n\nЗа кого сохранить?', membersKeyboard(access.allowedMembers));
+    sendMessage(u.chatId, 'Вот что вижу:\n<i>' + esc_(summary) + '</i>\n\nЗа кого сохранить?', membersKeyboard(access.allowedMembers));
   }
 }
 
 function sendPhotoConfirm_(u, data) {
   sendMessage(u.chatId,
-    'Вот что вижу:\n<i>' + data.summary + '</i>\n\nСохранить в медкарту вместе с оригиналом фото?',
+    'Вот что вижу:\n<i>' + esc_(data.summary) + '</i>\n\nСохранить в медкарту вместе с оригиналом фото?',
     confirmKeyboard());
 }

@@ -93,32 +93,31 @@ function getMemberById_(access, memberId) {
   return null;
 }
 
-/** Короткий понятный id из имени («Адель» → adel), с защитой от совпадений. */
-function slugifyName_(name) {
-  var map = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'};
-  // Проверяем принадлежность букве через сам map, а не через диапазон
-  // /[a-zа-яё]/ — диапазон кириллицы в регулярке ломается, если файл
-  // куда-нибудь попадёт в неверной кодировке.
-  var slug = name.toLowerCase().split('').filter(function (c) {
-    return map[c] != null || (c >= 'a' && c <= 'z');
-  }).map(function (c) {
-    return map[c] != null ? map[c] : c;
-  }).join('').slice(0, 5);
-  return slug || 'person';
-}
-
-function addFamilyMember_(name, gender, birthYear) {
+/**
+ * id члена семьи — это его имя.
+ *
+ * Раньше здесь была транслитерация («Адель» → adel). Из-за неё в таблице
+ * повсюду стояли коды вроде nurla/gulna, которые нечитаемы ни для человека,
+ * заполняющего лист руками, ни для ИИ, если выгрузить таблицу в ChatGPT.
+ * Имя в семье и так уникально, а Telegram разрешает кириллицу в callback_data
+ * (лимит 64 байта — «Гульнара» это 16). Тёзок разводим номером: «Адель 2».
+ */
+function uniqueMemberId_(name) {
   var existing = getFamilyMembers_().map(function (m) { return m.id; });
-  var base = slugifyName_(name);
+  var base = String(name).trim() || 'Без имени';
   var candidate = base;
   var suffix = 1;
   while (existing.indexOf(candidate) !== -1) {
     suffix++;
-    var digits = String(suffix);
-    candidate = base.slice(0, Math.max(1, 5 - digits.length)) + digits;
+    candidate = base + ' ' + suffix;
   }
-  appendRow_(SHEET_FAMILY, { id: candidate, name: name, gender: gender, birth_year: birthYear });
-  return { id: candidate, name: name, gender: gender, birthYear: birthYear };
+  return candidate;
+}
+
+function addFamilyMember_(name, gender, birthYear) {
+  var id = uniqueMemberId_(name);
+  appendRow_(SHEET_FAMILY, { id: id, name: name, gender: gender, birth_year: birthYear });
+  return { id: id, name: name, gender: gender, birthYear: birthYear };
 }
 
 // ---------- Записи данных ----------
@@ -149,20 +148,133 @@ function getKnowledgeRules_(memberId) {
     .sort(function (a, b) { return (Number(b.priority) || 0) - (Number(a.priority) || 0); });
 }
 
-function addAnalysis_(memberId, entryDate, indicatorKey, value) {
-  appendRow_(SHEET_ANALYSES, {
-    id: newId_(), family_member_id: memberId, date: entryDate,
-    indicator_key: indicatorKey, value: value
+// ---------- Анализы: широкий лист ----------
+// Лист Analyses устроен как бумажный бланк: строка = один человек на одну дату,
+// колонки = показатели («Дата | Кто | Гемоглобин | Глюкоза | ...»).
+//
+// Раньше он был «длинным» (строка на каждый показатель, со служебными id и
+// латинскими кодами). Широкий вариант выбран сознательно: в него быстро
+// вбивать бланк руками, он читается глазами без расшифровки кодов, и он же
+// понятен ChatGPT/Gemini, если выгрузить таблицу целиком — не нужен ни
+// отдельный лист для ручного ввода, ни синхронизация между ними.
+
+var ANALYSES_COL_DATE = 1;
+var ANALYSES_COL_MEMBER = 2;
+var ANALYSES_COL_FIRST_INDICATOR = 3;
+
+/** Значение ячейки с датой (Date или текст) → 'yyyy-MM-dd'. */
+function normalizeDate_(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  var text = String(value == null ? '' : value).trim();
+  if (!text) return '';
+  return parseFlexibleDate_(text) || text;
+}
+
+function analysesSheet_() {
+  return ss_().getSheetByName(SHEET_ANALYSES);
+}
+
+function analysesHeaders_(sheet) {
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return [];
+  return sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
+    return String(h).trim();
   });
 }
 
-/** Последнее известное значение каждого показателя: {indicator_key: value}. */
+/** Русское название колонки → indicator_key, по справочнику. */
+function headerToKeyMap_() {
+  var map = {};
+  readAll_(SHEET_CATALOG).forEach(function (row) {
+    var label = String(row['Русское название'] || '').trim();
+    var key = String(row['Код (indicator_key)'] || '').trim();
+    if (label && key) map[label.toLowerCase()] = key;
+  });
+  return map;
+}
+
+/**
+ * Номер колонки показателя. Если показателя ещё нет в листе (человек назвал
+ * боту что-то новое) — колонка дописывается справа, чтобы значение не потерялось.
+ */
+function indicatorColumn_(sheet, key) {
+  var label = indicatorLabel_(key);
+  var headers = analysesHeaders_(sheet);
+  for (var i = ANALYSES_COL_FIRST_INDICATOR - 1; i < headers.length; i++) {
+    if (headers[i].toLowerCase() === label.toLowerCase()) return i + 1;
+  }
+  var col = Math.max(headers.length, ANALYSES_COL_FIRST_INDICATOR - 1) + 1;
+  sheet.getRange(1, col).setValue(label);
+  styleAnalysesHeader_(sheet, col);
+  return col;
+}
+
+/** Строка этого человека за эту дату; 0 — если такой ещё нет. */
+function findAnalysisRow_(sheet, memberId, entryDate) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  var keys = sheet.getRange(2, ANALYSES_COL_DATE, lastRow - 1, 2).getValues();
+  for (var i = 0; i < keys.length; i++) {
+    if (normalizeDate_(keys[i][0]) === entryDate &&
+        String(keys[i][1]).trim() === memberId) {
+      return i + 2;
+    }
+  }
+  return 0;
+}
+
+/** Записать пачку показателей {key: value} за одну дату одному человеку. */
+function addAnalyses_(memberId, entryDate, indicators) {
+  var sheet = analysesSheet_();
+  var row = findAnalysisRow_(sheet, memberId, entryDate);
+  if (!row) {
+    row = Math.max(sheet.getLastRow(), 1) + 1;
+    sheet.getRange(row, ANALYSES_COL_DATE).setValue(entryDate);
+    sheet.getRange(row, ANALYSES_COL_MEMBER).setValue(memberId);
+  }
+  Object.keys(indicators).forEach(function (key) {
+    sheet.getRange(row, indicatorColumn_(sheet, key)).setValue(indicators[key]);
+  });
+}
+
+/**
+ * Последнее известное значение каждого показателя: {indicator_key: value}.
+ * Даты сравниваются приведёнными к 'yyyy-MM-dd' — иначе строка, которую Google
+ * Sheets распознал как настоящую дату, сортировалась бы как «Mon Jun 10 2026»
+ * и «последним» оказывался бы не тот анализ.
+ */
 function getLatestValues_(memberId) {
-  var entries = readAll_(SHEET_ANALYSES)
-    .filter(function (r) { return String(r.family_member_id) === memberId; })
-    .sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+  var sheet = analysesSheet_();
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return {};
+
+  var headers = values[0].map(function (h) { return String(h).trim(); });
+  var byHeader = headerToKeyMap_();
+  var keyByCol = {};
+  for (var c = ANALYSES_COL_FIRST_INDICATOR - 1; c < headers.length; c++) {
+    if (!headers[c]) continue;
+    // Колонки нет в справочнике — берём заголовок как ключ: значение
+    // сохранится и покажется, просто без сверки с нормой.
+    keyByCol[c] = byHeader[headers[c].toLowerCase()] || headers[c];
+  }
+
   var latest = {};
-  entries.forEach(function (e) { latest[String(e.indicator_key)] = String(e.value); });
+  values.slice(1)
+    .filter(function (r) {
+      return String(r[ANALYSES_COL_MEMBER - 1]).trim() === memberId;
+    })
+    .sort(function (a, b) {
+      return normalizeDate_(a[ANALYSES_COL_DATE - 1])
+        .localeCompare(normalizeDate_(b[ANALYSES_COL_DATE - 1]));
+    })
+    .forEach(function (r) {
+      Object.keys(keyByCol).forEach(function (c) {
+        var value = r[c];
+        if (value !== '' && value != null) latest[keyByCol[c]] = String(value);
+      });
+    });
   return latest;
 }
 
