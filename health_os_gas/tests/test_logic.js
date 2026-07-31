@@ -37,6 +37,8 @@ function readAll_(name) {
   if (name === SHEET_PERSONAL_NORMS) return FAKE_PERSONAL;
   return [];
 }
+// В боевом коде это кэш на 6 часов; в тестах кэшировать нечего.
+function cachedRows_(name) { return readAll_(name); }
 
 // --- Загружаем проверяемый код ---
 eval(readFile(BASE + 'Norms.gs'));
@@ -140,6 +142,25 @@ eq('ДД/ММ/ГГГГ', parseFlexibleDate_('15/07/2025'), '2025-07-15');
 eq('ГГГГ-ММ-ДД', parseFlexibleDate_('2025-07-15'), '2025-07-15');
 eq('несуществующая дата', parseFlexibleDate_('32.13.2025'), null);
 eq('мусор вместо даты', parseFlexibleDate_('вчера'), null);
+
+// ---------- Справочник главнее кода ----------
+// Одни и те же показатели описаны и в NORMS, и в листе. Раньше код побеждал,
+// и переименование в таблице бот игнорировал.
+FAKE_CATALOG = [{ 'Русское название': 'Гемоглобин (Hb)', 'Код (indicator_key)': 'hemoglobin',
+                  'Единицы': 'g/L', 'Норма (мужчины)': '', 'Норма (женщины)': '' }];
+FAKE_PERSONAL = [];
+refreshCatalog_(null);
+eq('название из справочника важнее кода', indicatorLabel_('hemoglobin'), 'Гемоглобин (Hb)');
+eq('единицы из справочника важнее кода', indicatorUnit_('hemoglobin'), 'g/L');
+eq('переименованный показатель узнаётся в тексте',
+   parseAnalysisText_('гемоглобин (hb) 135'), { hemoglobin: 135 });
+eq('старый алиас продолжает работать', parseAnalysisText_('гем 135'), { hemoglobin: 135 });
+eq('норма осталась из кода, раз в справочнике пусто',
+   checkNorm_('hemoglobin', 100, 'male').status, 'low');
+eq('checkNorm_ отдаёт название из справочника',
+   checkNorm_('hemoglobin', 150, 'male').label, 'Гемоглобин (Hb)');
+FAKE_CATALOG = []; FAKE_PERSONAL = [];
+refreshCatalog_(null);
 
 // ---------- normalizeDate_ ----------
 // Ключевой момент широкого листа: дату Google Sheets может отдать объектом

@@ -19,6 +19,8 @@ function onOpen() {
     .addItem('Обновить списки и колонки', 'refreshEntrySheets')
     .addSeparator()
     .addItem('Проверить анализы по нормам', 'highlightOutOfRange')
+    .addSeparator()
+    .addItem('Сбросить кэш бота', 'dropAllCaches')
     .addToUi();
 }
 
@@ -34,6 +36,13 @@ function refreshEntrySheets() {
   SpreadsheetApp.getActive().toast('Списки и колонки обновлены.', 'Health OS', 5);
 }
 
+/** Забыть всё, что бот держит в кэше. Страховка, если что-то разошлось. */
+function dropAllCaches() {
+  [SHEET_FAMILY, SHEET_USERS, SHEET_CATALOG, SHEET_PERSONAL_NORMS, SHEET_KB]
+    .forEach(dropSheetCache_);
+  SpreadsheetApp.getActive().toast('Кэш сброшен — бот перечитает листы.', 'Health OS', 5);
+}
+
 // ---------- Справочник анализов: код показателя вписывается сам ----------
 
 /**
@@ -44,6 +53,12 @@ function refreshEntrySheets() {
 function onEdit(e) {
   if (!e || !e.range) return;
   var name = e.range.getSheet().getName();
+
+  // Кэш живёт 6 часов, и без этого правка листа доходила бы до бота только
+  // через 6 часов. Сбрасываем ровно тот лист, который правили: остальные
+  // продолжают отвечать из кэша.
+  dropSheetCache_(name);
+
   if (name === SHEET_CATALOG) fillCatalogKey_(e);
   else if (name === SHEET_PERSONAL_NORMS) fillPersonalNormKey_(e);
 }
@@ -146,6 +161,7 @@ function syncAnalysesColumns_() {
   });
 
   if (missing.length) {
+    ensureColumns_(sheet, headers.length + missing.length);
     sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
   }
 

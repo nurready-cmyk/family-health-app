@@ -17,6 +17,59 @@ function ss_() {
   return SpreadsheetApp.getActiveSpreadsheet();
 }
 
+// ---------- Кэш справочных листов ----------
+// На одно нажатие кнопки бот открывал таблицу 5-7 раз: права доступа, список
+// семьи, справочник, личные нормы. Сами листы крошечные, но каждое обращение —
+// это отдельный поход в Google, и из них складывалась заметная задержка.
+//
+// Кэшируются только справочные листы, которые меняются раз в месяц. Analyses и
+// Sessions не кэшируются никогда: они меняются в тот же момент, когда читаются.
+//
+// ВАЖНО: кэшируются строки листа, а не решение «пустить / не пустить».
+// Отрицательный ответ в кэш попадать не должен — иначе человек, написавший
+// боту до того, как его внесли в лист Users, получал бы отказ ещё 6 часов
+// после того, как его туда внесли.
+
+var CACHE_TTL_SECONDS = 6 * 60 * 60;
+var _memo = {};   // в пределах одного запуска — даже без похода в CacheService
+
+// Кэш — ускорение, а не источник истины: любой сбой CacheService должен
+// приводить к обычному чтению листа, а не к падению. Простые триггеры вроде
+// onEdit работают с урезанными правами, и ронять из-за кэша автоподстановку
+// кода показателя было бы обидно.
+
+function cachedRows_(sheetName) {
+  if (_memo[sheetName]) return _memo[sheetName];
+
+  try {
+    var hit = CacheService.getScriptCache().get('sheet:' + sheetName);
+    if (hit) {
+      _memo[sheetName] = JSON.parse(hit);
+      return _memo[sheetName];
+    }
+  } catch (e) { /* кэш недоступен или повреждён — читаем лист */ }
+
+  var rows = readAll_(sheetName);
+  _memo[sheetName] = rows;
+  try {
+    // Больше 100 КБ в одну запись CacheService не принимает — тогда просто
+    // читаем лист каждый раз, как было раньше.
+    CacheService.getScriptCache()
+      .put('sheet:' + sheetName, JSON.stringify(rows), CACHE_TTL_SECONDS);
+  } catch (e) {
+    Logger.log('Лист ' + sheetName + ' не закэширован: ' + e);
+  }
+  return rows;
+}
+
+/** Забыть кэш листа. Вызывается и при записи ботом, и при правке руками. */
+function dropSheetCache_(sheetName) {
+  delete _memo[sheetName];
+  try {
+    CacheService.getScriptCache().remove('sheet:' + sheetName);
+  } catch (e) { /* нечего сбрасывать — значит, и кэша не было */ }
+}
+
 /** Все строки листа как объекты {заголовок: значение}. */
 function readAll_(sheetName) {
   var sheet = ss_().getSheetByName(sheetName);
@@ -48,13 +101,13 @@ function newId_() {
 // ---------- Family_Members / Users / доступ ----------
 
 function getFamilyMembers_() {
-  return readAll_(SHEET_FAMILY).map(function (r) {
+  return cachedRows_(SHEET_FAMILY).map(function (r) {
     return { id: String(r.id), name: String(r.name), gender: String(r.gender), birthYear: r.birth_year };
   });
 }
 
-function getUserByTgId_(tgId) {
-  var rows = readAll_(SHEET_USERS);
+function findUserRow_(tgId) {
+  var rows = cachedRows_(SHEET_USERS);
   for (var i = 0; i < rows.length; i++) {
     if (String(rows[i].tg_id) === String(tgId)) {
       return {
@@ -66,6 +119,18 @@ function getUserByTgId_(tgId) {
     }
   }
   return null;
+}
+
+/**
+ * Не нашли человека — единственный случай, когда стоит усомниться в кэше:
+ * его могли внести в лист минуту назад. Перечитываем лист и пробуем ещё раз,
+ * чтобы отказ никогда не «прилипал» на срок жизни кэша.
+ */
+function getUserByTgId_(tgId) {
+  var user = findUserRow_(tgId);
+  if (user) return user;
+  dropSheetCache_(SHEET_USERS);
+  return findUserRow_(tgId);
 }
 
 /**
@@ -117,6 +182,7 @@ function uniqueMemberId_(name) {
 function addFamilyMember_(name, gender, birthYear) {
   var id = uniqueMemberId_(name);
   appendRow_(SHEET_FAMILY, { id: id, name: name, gender: gender, birth_year: birthYear });
+  dropSheetCache_(SHEET_FAMILY);
   return { id: id, name: name, gender: gender, birthYear: birthYear };
 }
 
@@ -140,10 +206,11 @@ function addKnowledgeRule_(memberId, ruleText) {
   appendRow_(SHEET_KB, {
     id: newId_(), family_member_id: memberId, rule_text: ruleText, priority: 0
   });
+  dropSheetCache_(SHEET_KB);
 }
 
 function getKnowledgeRules_(memberId) {
-  return readAll_(SHEET_KB)
+  return cachedRows_(SHEET_KB)
     .filter(function (r) { return String(r.family_member_id) === memberId; })
     .sort(function (a, b) { return (Number(b.priority) || 0) - (Number(a.priority) || 0); });
 }
@@ -187,7 +254,7 @@ function analysesHeaders_(sheet) {
 /** Русское название колонки → indicator_key, по справочнику. */
 function headerToKeyMap_() {
   var map = {};
-  readAll_(SHEET_CATALOG).forEach(function (row) {
+  cachedRows_(SHEET_CATALOG).forEach(function (row) {
     var label = String(row['Русское название'] || '').trim();
     var key = String(row['Код (indicator_key)'] || '').trim();
     if (label && key) map[label.toLowerCase()] = key;
@@ -196,19 +263,13 @@ function headerToKeyMap_() {
 }
 
 /**
- * Номер колонки показателя. Если показателя ещё нет в листе (человек назвал
- * боту что-то новое) — колонка дописывается справа, чтобы значение не потерялось.
+ * Убедиться, что в листе есть нужное число колонок. Лист создан ровно по
+ * ширине справочника, и без этого запись в первую же новую колонку падает
+ * с «диапазон за пределами листа».
  */
-function indicatorColumn_(sheet, key) {
-  var label = indicatorLabel_(key);
-  var headers = analysesHeaders_(sheet);
-  for (var i = ANALYSES_COL_FIRST_INDICATOR - 1; i < headers.length; i++) {
-    if (headers[i].toLowerCase() === label.toLowerCase()) return i + 1;
-  }
-  var col = Math.max(headers.length, ANALYSES_COL_FIRST_INDICATOR - 1) + 1;
-  sheet.getRange(1, col).setValue(label);
-  styleAnalysesHeader_(sheet, col);
-  return col;
+function ensureColumns_(sheet, needed) {
+  var have = sheet.getMaxColumns();
+  if (needed > have) sheet.insertColumnsAfter(have, needed - have);
 }
 
 /** Строка этого человека за эту дату; 0 — если такой ещё нет. */
@@ -225,18 +286,60 @@ function findAnalysisRow_(sheet, memberId, entryDate) {
   return 0;
 }
 
-/** Записать пачку показателей {key: value} за одну дату одному человеку. */
+/**
+ * Записать пачку показателей {key: value} за одну дату одному человеку.
+ *
+ * Всё делается за считанные обращения к таблице независимо от того, сколько
+ * показателей в бланке. Раньше на каждый показатель приходилось перечитывать
+ * шапку и отдельно записывать ячейку — бланк из 15 строк превращался в 30
+ * с лишним походов в Google, и «Записал» приходило с заметной паузой.
+ */
 function addAnalyses_(memberId, entryDate, indicators) {
   var sheet = analysesSheet_();
-  var row = findAnalysisRow_(sheet, memberId, entryDate);
-  if (!row) {
-    row = Math.max(sheet.getLastRow(), 1) + 1;
-    sheet.getRange(row, ANALYSES_COL_DATE).setValue(entryDate);
-    sheet.getRange(row, ANALYSES_COL_MEMBER).setValue(memberId);
+  var headers = analysesHeaders_(sheet);
+  if (headers.length < ANALYSES_COL_FIRST_INDICATOR - 1) {
+    headers = ['Дата', 'Кто'];
+    sheet.getRange(1, 1, 1, 2).setValues([headers]);
   }
-  Object.keys(indicators).forEach(function (key) {
-    sheet.getRange(row, indicatorColumn_(sheet, key)).setValue(indicators[key]);
+
+  // Показатели, для которых колонки ещё нет, дописываем справа — одним махом.
+  var position = {};
+  headers.forEach(function (h, i) { position[h.toLowerCase()] = i + 1; });
+
+  var fresh = [];
+  var keys = Object.keys(indicators);
+  keys.forEach(function (key) {
+    var label = indicatorLabel_(key);
+    if (position[label.toLowerCase()] == null) {
+      position[label.toLowerCase()] = headers.length + fresh.length + 1;
+      fresh.push(label);
+    }
   });
+  if (fresh.length) {
+    ensureColumns_(sheet, headers.length + fresh.length);
+    sheet.getRange(1, headers.length + 1, 1, fresh.length).setValues([fresh]);
+    styleAnalysesHeader_(sheet, null, headers.length + fresh.length);
+  }
+
+  var width = headers.length + fresh.length;
+  var row = findAnalysisRow_(sheet, memberId, entryDate);
+  var values;
+  if (row) {
+    // Существующий бланк дополняем, а не затираем: в нём могли быть
+    // показатели, введённые руками.
+    values = sheet.getRange(row, 1, 1, width).getValues()[0];
+  } else {
+    row = Math.max(sheet.getLastRow(), 1) + 1;
+    values = [];
+    for (var i = 0; i < width; i++) values.push('');
+    values[ANALYSES_COL_DATE - 1] = entryDate;
+    values[ANALYSES_COL_MEMBER - 1] = memberId;
+  }
+
+  keys.forEach(function (key) {
+    values[position[indicatorLabel_(key).toLowerCase()] - 1] = indicators[key];
+  });
+  sheet.getRange(row, 1, 1, width).setValues([values]);
 }
 
 /**

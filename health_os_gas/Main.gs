@@ -220,6 +220,7 @@ function continueFlow_(u, access, session) {
       if (isNaN(year)) { sendMessage(u.chatId, 'Нужен год числом, например 1986.'); return; }
       var me = addFamilyMember_(data.name, data.gender, year);
       appendRow_(SHEET_USERS, { id: newId_(), tg_id: u.userId, name: data.name, role: 'admin', family_member_id: me.id });
+      dropSheetCache_(SHEET_USERS);
       clearSession_(u.chatId);
       sendMessage(u.chatId, '✅ Готово! Вы администратор. Добавляйте близких через /add_family_member.', mainMenuKeyboard());
       return;

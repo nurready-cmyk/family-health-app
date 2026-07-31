@@ -52,6 +52,14 @@ var INDICATOR_ALIASES = {
 var _normOverrides = {};      // { key: { male:[min,max], female:[min,max] } } — для встроенных
 var _customIndicators = {};   // { key: { label, unit, male:[min,max]|null, female:[min,max]|null } } — свои
 var _unitOverrides = {};      // { key: 'ммоль/л' } — колонка «Единицы» справочника
+var _labelOverrides = {};     // { key: 'Гемоглобин' } — колонка «Русское название»
+
+// Одни и те же показатели описаны дважды: в NORMS выше и в листе
+// Справочник_Анализов. Раз так, договоримся, кто главный:
+//   название и единицы — всегда из таблицы (её видит человек, её же читает ИИ);
+//   числовые нормы     — из таблицы, если заполнены, иначе из NORMS.
+// Без этого переименование показателя в таблице бот просто игнорировал:
+// в колонке было одно, в ответе бота — другое, и связать их было нечем.
 
 /** «120-155» → [120, 155]; пусто/мусор → null. */
 function parseNormRange_(text) {
@@ -70,8 +78,9 @@ function refreshCatalog_(memberId) {
   _normOverrides = {};
   _customIndicators = {};
   _unitOverrides = {};
+  _labelOverrides = {};
 
-  readAll_(SHEET_CATALOG).forEach(function (row) {
+  cachedRows_(SHEET_CATALOG).forEach(function (row) {
     var key = String(row['Код (indicator_key)'] || '').trim();
     var label = String(row['Русское название'] || '').trim();
     if (!key || !label) return;
@@ -82,6 +91,7 @@ function refreshCatalog_(memberId) {
 
     var unit = String(row['Единицы'] || '').trim();
     if (unit) _unitOverrides[key] = unit;
+    _labelOverrides[key] = label;
 
     if (NORMS[key]) {
       if (male || female) _normOverrides[key] = { male: male, female: female };
@@ -92,7 +102,7 @@ function refreshCatalog_(memberId) {
 
   if (!memberId) return;
 
-  readAll_(SHEET_PERSONAL_NORMS).forEach(function (row) {
+  cachedRows_(SHEET_PERSONAL_NORMS).forEach(function (row) {
     if (String(row['family_member_id'] || '').trim() !== memberId) return;
     var key = String(row['Код (indicator_key)'] || '').trim();
     var range = parseNormRange_(row['Норма']);
@@ -110,8 +120,9 @@ function refreshCatalog_(memberId) {
   });
 }
 
-/** Русское название показателя — из NORMS или из справочника. */
+/** Название: справочник важнее кода — см. договорённость наверху файла. */
 function indicatorLabel_(key) {
+  if (_labelOverrides[key]) return _labelOverrides[key];
   if (NORMS[key]) return NORMS[key].label;
   if (_customIndicators[key]) return _customIndicators[key].label;
   return key;
@@ -136,12 +147,12 @@ function checkNorm_(key, value, gender) {
     var base = NORMS[key];
     var ov = _normOverrides[key];
     range = ov ? (gender === 'female' ? ov.female : ov.male) : (gender === 'female' ? base.female : base.male);
-    label = base.label; unit = base.unit;
+    label = indicatorLabel_(key); unit = indicatorUnit_(key);
   } else if (_customIndicators[key]) {
     var c = _customIndicators[key];
     if (!c.male && !c.female) return null;
     range = gender === 'female' ? (c.female || c.male) : (c.male || c.female);
-    label = c.label; unit = indicatorUnit_(key);
+    label = indicatorLabel_(key); unit = indicatorUnit_(key);
   } else {
     return null;
   }
@@ -160,8 +171,11 @@ function matchIndicatorKey_(text) {
       if (norm.indexOf(alias) !== -1 && alias.length > bestLen) { best = key; bestLen = alias.length; }
     });
   });
-  Object.keys(_customIndicators).forEach(function (key) {
-    var alias = _customIndicators[key].label.toLowerCase();
+  // Названия из справочника — наравне со встроенными алиасами, иначе
+  // переименованный в таблице показатель бот перестал бы узнавать в тексте
+  // и голосовых («мочевина 5.4»).
+  Object.keys(_labelOverrides).forEach(function (key) {
+    var alias = _labelOverrides[key].toLowerCase();
     if (norm.indexOf(alias) !== -1 && alias.length > bestLen) { best = key; bestLen = alias.length; }
   });
   return best;
