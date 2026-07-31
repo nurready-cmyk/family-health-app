@@ -1,0 +1,8 @@
+# Что НЕ уезжает в Apps Script при `clasp push`.
+# Главное здесь — tests/: это JXA-скрипт для запуска на Маке, он начинается
+# с ObjC.import и в Apps Script сломал бы загрузку всего проекта.
+tests/**
+README.md
+.claspignore
+.clasp.json
+.DS_Store

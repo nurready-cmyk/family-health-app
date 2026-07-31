@@ -3,3 +3,6 @@
 
 # Временные файлы Word
 ~$*.docx
+
+# clasp: содержит id скрипта, а репозиторий публичный
+health_os_gas/.clasp.json
