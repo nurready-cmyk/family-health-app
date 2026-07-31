@@ -155,7 +155,7 @@ function startReport_(u, access) {
 }
 
 function startAddFamilyMember_(u, access) {
-  if (access.user.role !== 'admin') {
+  if (!isAdmin_(access.user.role)) {
     sendMessage(u.chatId, 'Добавлять членов семьи может только администратор.');
     return;
   }
@@ -219,7 +219,7 @@ function continueFlow_(u, access, session) {
       var year = parseInt(u.text, 10);
       if (isNaN(year)) { sendMessage(u.chatId, 'Нужен год числом, например 1986.'); return; }
       var me = addFamilyMember_(data.name, data.gender, year);
-      appendRow_(SHEET_USERS, { id: newId_(), tg_id: u.userId, name: data.name, role: 'admin', family_member_id: me.id });
+      appendRow_(SHEET_USERS, { 'Telegram id': u.userId, 'Имя': data.name, 'Роль': 'админ', 'Кто из семьи': me.id, 'Служебный id': newId_() });
       dropSheetCache_(SHEET_USERS);
       clearSession_(u.chatId);
       sendMessage(u.chatId, '✅ Готово! Вы администратор. Добавляйте близких через /add_family_member.', mainMenuKeyboard());
@@ -402,7 +402,7 @@ function recommendationsBlock_(memberId, gender, abnormalKeys) {
   var personal = getMatchingPersonalRules_(memberId, abnormalKeys);
   if (personal.length) {
     block += '\n\n🧠 Из ваших личных заметок:\n' +
-      personal.map(function (r) { return '• ' + esc_(r.rule_text); }).join('\n');
+      personal.map(function (r) { return '• ' + esc_(r['Правило']); }).join('\n');
   }
   var general = getActiveRecommendations_(getLatestValues_(memberId), gender);
   if (general.length) {

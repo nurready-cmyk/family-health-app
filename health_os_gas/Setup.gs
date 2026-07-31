@@ -2,18 +2,15 @@
 // Запускается вручную из редактора Apps Script один раз при развёртывании.
 // Все три функции безопасно запускать повторно.
 
-/**
- * Шаг 1. Создать лист Sessions (единственный новый лист — остальные 8 уже
- * есть в таблице от Python-версии и используются как есть).
- */
+/** Шаг 1. Создать служебный лист диалогов и проверить, что остальные на месте. */
 function setup() {
   var sheet = ss_().getSheetByName(SHEET_SESSIONS);
   if (!sheet) {
     sheet = ss_().insertSheet(SHEET_SESSIONS);
-    sheet.appendRow(['chat_id', 'state', 'data_json', 'updated_at']);
-    Logger.log('Лист Sessions создан.');
+    sheet.appendRow(['Чат', 'Шаг', 'Данные', 'Обновлено']);
+    Logger.log('Служебный лист создан.');
   } else {
-    Logger.log('Лист Sessions уже существует.');
+    Logger.log('Служебный лист уже существует.');
   }
 
   var required = [SHEET_FAMILY, SHEET_USERS, SHEET_LOGS, SHEET_MEDICAL, SHEET_KB, SHEET_ANALYSES];

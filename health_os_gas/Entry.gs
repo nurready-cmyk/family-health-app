@@ -10,7 +10,7 @@
 //   • колонки листа Analyses, собранные по Справочнику_Анализов;
 //   • автоматический код (indicator_key) для нового показателя.
 
-var SHEET_EXAM_CATALOG = 'Справочник_Обследований';
+var SHEET_EXAM_CATALOG = 'Справочник обследований';
 
 /** Меню появляется само при открытии таблицы. */
 function onOpen() {
@@ -74,8 +74,8 @@ function headerIndex_(sheet) {
 function fillCatalogKey_(e) {
   var sheet = e.range.getSheet();
   var cols = headerIndex_(sheet);
-  var nameCol = cols['Русское название'];
-  var keyCol = cols['Код (indicator_key)'];
+  var nameCol = cols['Показатель'];
+  var keyCol = cols['Код'];
   if (!nameCol || !keyCol) return;
 
   var row = e.range.getRow();
@@ -94,8 +94,8 @@ function fillCatalogKey_(e) {
 function fillPersonalNormKey_(e) {
   var sheet = e.range.getSheet();
   var cols = headerIndex_(sheet);
-  var nameCol = cols['Русское название'];
-  var keyCol = cols['Код (indicator_key)'];
+  var nameCol = cols['Показатель'];
+  var keyCol = cols['Код'];
   if (!nameCol || !keyCol) return;
 
   var row = e.range.getRow();
@@ -153,7 +153,7 @@ function syncAnalysesColumns_() {
 
   var missing = [];
   readAll_(SHEET_CATALOG).forEach(function (row) {
-    var label = String(row['Русское название'] || '').trim();
+    var label = String(row['Показатель'] || '').trim();
     if (label && !present[label.toLowerCase()]) {
       present[label.toLowerCase()] = true;
       missing.push(label);
@@ -207,8 +207,8 @@ function applyValidations_() {
   var medical = ss_().getSheetByName(SHEET_MEDICAL);
   var medHeaders = medical.getRange(1, 1, 1, medical.getLastColumn()).getValues()[0]
     .map(function (h) { return String(h).trim(); });
-  var memberCol = medHeaders.indexOf('family_member_id') + 1;
-  var typeCol = medHeaders.indexOf('event_type') + 1;
+  var memberCol = medHeaders.indexOf('Кто') + 1;
+  var typeCol = medHeaders.indexOf('Что это было') + 1;
   if (memberCol) {
     medical.getRange(2, memberCol, medical.getMaxRows() - 1, 1).setDataValidation(members);
   }

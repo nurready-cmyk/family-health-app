@@ -1,17 +1,18 @@
 // ===== ДОСТУП К GOOGLE SHEETS =====
 // Скрипт привязан к таблице «Здоровье семьи» (создан через Расширения → Apps Script),
-// поэтому SpreadsheetApp.getActiveSpreadsheet() — это она и есть. Та же таблица,
-// те же листы, что использовал Python-бот: ничего не мигрирует, меняется только код.
+// поэтому SpreadsheetApp.getActiveSpreadsheet() — это она и есть.
 
-var SHEET_FAMILY = 'Family_Members';
-var SHEET_USERS = 'Users';
-var SHEET_LOGS = 'Logs';
-var SHEET_MEDICAL = 'Medical_Data';
-var SHEET_KB = 'Knowledge_Base';
-var SHEET_ANALYSES = 'Analyses';
-var SHEET_CATALOG = 'Справочник_Анализов';
-var SHEET_PERSONAL_NORMS = 'Личные_Нормы';
-var SHEET_SESSIONS = 'Sessions';
+// Названия листов и колонок — по-русски: таблицу заполняет человек, а не
+// программист, и ему не должно требоваться переводить family_member_id.
+var SHEET_FAMILY = 'Семья';
+var SHEET_USERS = 'Доступ';
+var SHEET_LOGS = 'Дневник';
+var SHEET_MEDICAL = 'Обследования';
+var SHEET_KB = 'Мои правила';
+var SHEET_ANALYSES = 'Анализы';
+var SHEET_CATALOG = 'Справочник анализов';
+var SHEET_PERSONAL_NORMS = 'Личные нормы';
+var SHEET_SESSIONS = 'Служебное';
 
 function ss_() {
   return SpreadsheetApp.getActiveSpreadsheet();
@@ -22,12 +23,12 @@ function ss_() {
 // семьи, справочник, личные нормы. Сами листы крошечные, но каждое обращение —
 // это отдельный поход в Google, и из них складывалась заметная задержка.
 //
-// Кэшируются только справочные листы, которые меняются раз в месяц. Analyses и
-// Sessions не кэшируются никогда: они меняются в тот же момент, когда читаются.
+// Кэшируются только справочные листы, которые меняются раз в месяц. «Анализы» и
+// «Служебное» не кэшируются никогда: они меняются в тот же момент, когда читаются.
 //
 // ВАЖНО: кэшируются строки листа, а не решение «пустить / не пустить».
 // Отрицательный ответ в кэш попадать не должен — иначе человек, написавший
-// боту до того, как его внесли в лист Users, получал бы отказ ещё 6 часов
+// боту до того, как его внесли в лист «Доступ», получал бы отказ ещё 6 часов
 // после того, как его туда внесли.
 
 var CACHE_TTL_SECONDS = 6 * 60 * 60;
@@ -70,6 +71,37 @@ function dropSheetCache_(sheetName) {
   } catch (e) { /* нечего сбрасывать — значит, и кэша не было */ }
 }
 
+// ---------- Журнал ошибок ----------
+// Журнал выполнения Apps Script виден только в редакторе, и когда бот молчит,
+// причину приходится искать вручную. Поэтому ошибки дублируются в лист таблицы.
+//
+// ВАЖНО: пишем только ошибки, не каждое сообщение. Запись в таблицу — дорогая
+// операция, и логирование каждого апдейта само стало бы причиной задержек,
+// которые этим логированием и ищут.
+
+var SHEET_ERRORS = 'Ошибки';
+
+function logError_(where, err) {
+  try {
+    var sheet = ss_().getSheetByName(SHEET_ERRORS);
+    if (!sheet) {
+      sheet = ss_().insertSheet(SHEET_ERRORS);
+      sheet.appendRow(['Когда', 'Где', 'Ошибка', 'Подробности']);
+      sheet.setFrozenRows(1);
+      sheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#fce8e6');
+    }
+    sheet.appendRow([
+      Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'),
+      String(where),
+      String(err && err.message ? err.message : err).slice(0, 2000),
+      String(err && err.stack ? err.stack : '').slice(0, 4000)
+    ]);
+  } catch (e) {
+    // Журнал не должен быть причиной падения того, что он записывает.
+    Logger.log('Не удалось записать ошибку в лист: ' + e);
+  }
+}
+
 /** Все строки листа как объекты {заголовок: значение}. */
 function readAll_(sheetName) {
   var sheet = ss_().getSheetByName(sheetName);
@@ -98,23 +130,26 @@ function newId_() {
   return Utilities.getUuid();
 }
 
-// ---------- Family_Members / Users / доступ ----------
+// ---------- Семья, доступ ----------
 
 function getFamilyMembers_() {
   return cachedRows_(SHEET_FAMILY).map(function (r) {
-    return { id: String(r.id), name: String(r.name), gender: String(r.gender), birthYear: r.birth_year };
+    // Отдельной колонки с именем больше нет: id члена семьи — это и есть имя,
+    // и две одинаковые колонки рядом только путали.
+    var who = String(r['Кто']);
+    return { id: who, name: who, gender: String(r['Пол']), birthYear: r['Год рождения'] };
   });
 }
 
 function findUserRow_(tgId) {
   var rows = cachedRows_(SHEET_USERS);
   for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i].tg_id) === String(tgId)) {
+    if (String(rows[i]['Telegram id']) === String(tgId)) {
       return {
-        tgId: rows[i].tg_id,
-        name: String(rows[i].name),
-        role: String(rows[i].role),
-        familyMemberId: String(rows[i].family_member_id)
+        tgId: rows[i]['Telegram id'],
+        name: String(rows[i]['Имя']),
+        role: String(rows[i]['Роль']),
+        familyMemberId: String(rows[i]['Кто из семьи'])
       };
     }
   }
@@ -133,6 +168,20 @@ function getUserByTgId_(tgId) {
   return findUserRow_(tgId);
 }
 
+// Пол и роль в таблице записаны по-русски, но старые английские значения
+// продолжаем понимать: в листах могли остаться строки от прежней версии,
+// и молча перепутать норму для мужчины и женщины — худшее, что тут можно.
+
+function isFemale_(gender) {
+  var g = String(gender).trim().toLowerCase();
+  return g === 'женский' || g === 'ж' || g === 'female';
+}
+
+function isAdmin_(role) {
+  var r = String(role).trim().toLowerCase();
+  return r === 'админ' || r === 'администратор' || r === 'admin';
+}
+
 /**
  * Контекст доступа — как AccessContext в Python-версии:
  * админ действует за всех, обычный пользователь — только за себя.
@@ -141,7 +190,7 @@ function resolveAccess_(tgId) {
   var user = getUserByTgId_(tgId);
   if (!user) return null;
   var all = getFamilyMembers_();
-  var allowed = user.role === 'admin'
+  var allowed = isAdmin_(user.role)
     ? all
     : all.filter(function (m) { return m.id === user.familyMemberId; });
   return { user: user, allowedMembers: allowed };
@@ -181,7 +230,7 @@ function uniqueMemberId_(name) {
 
 function addFamilyMember_(name, gender, birthYear) {
   var id = uniqueMemberId_(name);
-  appendRow_(SHEET_FAMILY, { id: id, name: name, gender: gender, birth_year: birthYear });
+  appendRow_(SHEET_FAMILY, { 'Кто': id, 'Пол': gender, 'Год рождения': birthYear });
   dropSheetCache_(SHEET_FAMILY);
   return { id: id, name: name, gender: gender, birthYear: birthYear };
 }
@@ -190,29 +239,29 @@ function addFamilyMember_(name, gender, birthYear) {
 
 function addLog_(entryDate, memberId, metricType, value, notes) {
   appendRow_(SHEET_LOGS, {
-    id: newId_(), date: entryDate, family_member_id: memberId,
-    metric_type: metricType, value: value, notes: notes
+    'Дата': entryDate, 'Кто': memberId, 'Что': metricType,
+    'Запись': value, 'Заметка': notes, 'Служебный id': newId_()
   });
 }
 
 function addMedicalRecord_(recordDate, memberId, eventType, summary, documentUrl) {
   appendRow_(SHEET_MEDICAL, {
-    id: newId_(), date: recordDate, family_member_id: memberId,
-    event_type: eventType, summary: summary, document_url: documentUrl
+    'Дата': recordDate, 'Кто': memberId, 'Что это было': eventType,
+    'Заключение': summary, 'Ссылка на документ': documentUrl, 'Служебный id': newId_()
   });
 }
 
 function addKnowledgeRule_(memberId, ruleText) {
   appendRow_(SHEET_KB, {
-    id: newId_(), family_member_id: memberId, rule_text: ruleText, priority: 0
+    'Кто': memberId, 'Правило': ruleText, 'Важность': 0, 'Служебный id': newId_()
   });
   dropSheetCache_(SHEET_KB);
 }
 
 function getKnowledgeRules_(memberId) {
   return cachedRows_(SHEET_KB)
-    .filter(function (r) { return String(r.family_member_id) === memberId; })
-    .sort(function (a, b) { return (Number(b.priority) || 0) - (Number(a.priority) || 0); });
+    .filter(function (r) { return String(r['Кто']) === memberId; })
+    .sort(function (a, b) { return (Number(b['Важность']) || 0) - (Number(a['Важность']) || 0); });
 }
 
 // ---------- Анализы: широкий лист ----------
@@ -251,12 +300,12 @@ function analysesHeaders_(sheet) {
   });
 }
 
-/** Русское название колонки → indicator_key, по справочнику. */
+/** Название колонки листа «Анализы» → код показателя, по справочнику. */
 function headerToKeyMap_() {
   var map = {};
   cachedRows_(SHEET_CATALOG).forEach(function (row) {
-    var label = String(row['Русское название'] || '').trim();
-    var key = String(row['Код (indicator_key)'] || '').trim();
+    var label = String(row['Показатель'] || '').trim();
+    var key = String(row['Код'] || '').trim();
     if (label && key) map[label.toLowerCase()] = key;
   });
   return map;
@@ -389,10 +438,10 @@ function getLatestValues_(memberId) {
 function getSession_(chatId) {
   var rows = readAll_(SHEET_SESSIONS);
   for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i].chat_id) === String(chatId)) {
+    if (String(rows[i]['Чат']) === String(chatId)) {
       var data = {};
-      try { data = JSON.parse(String(rows[i].data_json) || '{}'); } catch (e) {}
-      return { state: String(rows[i].state || ''), data: data };
+      try { data = JSON.parse(String(rows[i]['Данные']) || '{}'); } catch (e) {}
+      return { state: String(rows[i]['Шаг'] || ''), data: data };
     }
   }
   return { state: '', data: {} };

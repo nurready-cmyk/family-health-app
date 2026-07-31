@@ -53,7 +53,11 @@ function poll() {
 
       // ok === false — это почти всегда 409 «webhook is active».
       // Без записи в журнал бот выглядел бы просто молчащим.
-      if (!res.ok) { Logger.log('getUpdates отказал: ' + JSON.stringify(res)); return; }
+      if (!res.ok) {
+        Logger.log('getUpdates отказал: ' + JSON.stringify(res));
+        logError_('getUpdates', new Error(JSON.stringify(res)));
+        return;
+      }
 
       var updates = res.result || [];
       if (!updates.length) {
@@ -74,6 +78,7 @@ function poll() {
           handleUpdate_(update);
         } catch (err) {
           Logger.log('Ошибка обработки апдейта ' + update.update_id + ': ' + err + '\n' + (err.stack || ''));
+          logError_('handleUpdate #' + update.update_id, err);
         }
       }
 

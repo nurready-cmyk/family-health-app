@@ -110,7 +110,7 @@ function getMatchingPersonalRules_(memberId, abnormalKeys) {
   if (!rules.length) return [];
   var labels = abnormalKeys.map(function (k) { return indicatorLabel_(k).toLowerCase(); });
   return rules.filter(function (rule) {
-    var text = String(rule.rule_text).toLowerCase();
+    var text = String(rule['Правило']).toLowerCase();
     return labels.some(function (label) { return text.indexOf(label) !== -1; });
   });
 }

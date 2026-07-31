@@ -52,7 +52,7 @@ var INDICATOR_ALIASES = {
 var _normOverrides = {};      // { key: { male:[min,max], female:[min,max] } } — для встроенных
 var _customIndicators = {};   // { key: { label, unit, male:[min,max]|null, female:[min,max]|null } } — свои
 var _unitOverrides = {};      // { key: 'ммоль/л' } — колонка «Единицы» справочника
-var _labelOverrides = {};     // { key: 'Гемоглобин' } — колонка «Русское название»
+var _labelOverrides = {};     // { key: 'Гемоглобин' } — колонка «Показатель» справочника
 
 // Одни и те же показатели описаны дважды: в NORMS выше и в листе
 // Справочник_Анализов. Раз так, договоримся, кто главный:
@@ -81,8 +81,8 @@ function refreshCatalog_(memberId) {
   _labelOverrides = {};
 
   cachedRows_(SHEET_CATALOG).forEach(function (row) {
-    var key = String(row['Код (indicator_key)'] || '').trim();
-    var label = String(row['Русское название'] || '').trim();
+    var key = String(row['Код'] || '').trim();
+    var label = String(row['Показатель'] || '').trim();
     if (!key || !label) return;
 
     var male = parseNormRange_(row['Норма (мужчины)']);
@@ -103,8 +103,8 @@ function refreshCatalog_(memberId) {
   if (!memberId) return;
 
   cachedRows_(SHEET_PERSONAL_NORMS).forEach(function (row) {
-    if (String(row['family_member_id'] || '').trim() !== memberId) return;
-    var key = String(row['Код (indicator_key)'] || '').trim();
+    if (String(row['Кто'] || '').trim() !== memberId) return;
+    var key = String(row['Код'] || '').trim();
     var range = parseNormRange_(row['Норма']);
     if (!key || !range) return;
     // Личная норма перекрывает всё остальное (одна на оба пола).
@@ -146,12 +146,12 @@ function checkNorm_(key, value, gender) {
   if (NORMS[key]) {
     var base = NORMS[key];
     var ov = _normOverrides[key];
-    range = ov ? (gender === 'female' ? ov.female : ov.male) : (gender === 'female' ? base.female : base.male);
+    range = ov ? (isFemale_(gender) ? ov.female : ov.male) : (isFemale_(gender) ? base.female : base.male);
     label = indicatorLabel_(key); unit = indicatorUnit_(key);
   } else if (_customIndicators[key]) {
     var c = _customIndicators[key];
     if (!c.male && !c.female) return null;
-    range = gender === 'female' ? (c.female || c.male) : (c.male || c.female);
+    range = isFemale_(gender) ? (c.female || c.male) : (c.male || c.female);
     label = indicatorLabel_(key); unit = indicatorUnit_(key);
   } else {
     return null;

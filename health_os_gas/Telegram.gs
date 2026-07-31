@@ -16,10 +16,14 @@ function tgCall_(method, payload) {
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   });
+  var body = res.getContentText();
+  // Telegram отвечает 200-кодом далеко не всегда, а отказ в отправке —
+  // это ровно тот случай, когда бот выглядит молчащим при исправном опросе.
   if (res.getResponseCode() >= 300) {
-    Logger.log('Telegram API error [' + method + ']: ' + res.getContentText());
+    Logger.log('Telegram API error [' + method + ']: ' + body);
+    logError_('Telegram ' + method, new Error(body));
   }
-  return JSON.parse(res.getContentText());
+  return JSON.parse(body);
 }
 
 /**
@@ -97,8 +101,8 @@ function metricsKeyboard() {
 function genderKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: 'Мужской', callback_data: 'gender:male' }],
-      [{ text: 'Женский', callback_data: 'gender:female' }]
+      [{ text: 'Мужской', callback_data: 'gender:мужской' }],
+      [{ text: 'Женский', callback_data: 'gender:женский' }]
     ]
   };
 }

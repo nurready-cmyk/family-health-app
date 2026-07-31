@@ -30,8 +30,8 @@ var Logger = { log: function () {} };
 // Данные, которые «лежат в таблице» — их подменяет каждый тест.
 var FAKE_CATALOG = [];
 var FAKE_PERSONAL = [];
-var SHEET_CATALOG = 'Справочник_Анализов';
-var SHEET_PERSONAL_NORMS = 'Личные_Нормы';
+var SHEET_CATALOG = 'Справочник анализов';
+var SHEET_PERSONAL_NORMS = 'Личные нормы';
 function readAll_(name) {
   if (name === SHEET_CATALOG) return FAKE_CATALOG;
   if (name === SHEET_PERSONAL_NORMS) return FAKE_PERSONAL;
@@ -39,6 +39,11 @@ function readAll_(name) {
 }
 // В боевом коде это кэш на 6 часов; в тестах кэшировать нечего.
 function cachedRows_(name) { return readAll_(name); }
+// Пол по-русски, но английские значения тоже понимаются — см. Sheets.gs.
+function isFemale_(g) {
+  g = String(g).trim().toLowerCase();
+  return g === 'женский' || g === 'ж' || g === 'female';
+}
 
 // --- Загружаем проверяемый код ---
 eval(readFile(BASE + 'Norms.gs'));
@@ -85,40 +90,40 @@ eq('125 low для male', checkNorm_('hemoglobin', 125, 'male').status, 'low');
 eq('неизвестный показатель', checkNorm_('unknown', 1, 'male'), null);
 
 // ---------- Переопределение нормы из справочника ----------
-FAKE_CATALOG = [{ 'Русское название': 'Гемоглобин', 'Код (indicator_key)': 'hemoglobin', 'Норма (мужчины)': '100-200', 'Норма (женщины)': '100-200' }];
+FAKE_CATALOG = [{ 'Показатель': 'Гемоглобин', 'Код': 'hemoglobin', 'Норма (мужчины)': '100-200', 'Норма (женщины)': '100-200' }];
 refreshCatalog_(null);
 eq('своя норма из справочника', checkNorm_('hemoglobin', 125, 'male').status, 'normal');
 
 // Один заполненный столбец применяется к обоим полам
-FAKE_CATALOG = [{ 'Русское название': 'АЛТ', 'Код (indicator_key)': 'alt', 'Норма (мужчины)': '0-45', 'Норма (женщины)': '' }];
+FAKE_CATALOG = [{ 'Показатель': 'АЛТ', 'Код': 'alt', 'Норма (мужчины)': '0-45', 'Норма (женщины)': '' }];
 refreshCatalog_(null);
 eq('одна норма на оба пола (male)', checkNorm_('alt', 44, 'male').status, 'normal');
 eq('одна норма на оба пола (female)', checkNorm_('alt', 44, 'female').status, 'normal');
 
 // ---------- Свой показатель (МНО) ----------
-FAKE_CATALOG = [{ 'Русское название': 'МНО', 'Код (indicator_key)': 'INR', 'Норма (мужчины)': '', 'Норма (женщины)': '' }];
+FAKE_CATALOG = [{ 'Показатель': 'МНО', 'Код': 'INR', 'Норма (мужчины)': '', 'Норма (женщины)': '' }];
 refreshCatalog_(null);
 eq('МНО распознаётся по названию', matchIndicatorKey_('мно'), 'INR');
 eq('МНО без нормы = нет статуса', checkNorm_('INR', 1.4, 'male'), null);
 eq('название МНО для вывода', indicatorLabel_('INR'), 'МНО');
 eq('парсинг "МНО 1.4"', parseAnalysisText_('МНО 1.4'), { INR: 1.4 });
 
-FAKE_CATALOG = [{ 'Русское название': 'МНО', 'Код (indicator_key)': 'INR', 'Норма (мужчины)': '0.8-1.2', 'Норма (женщины)': '0.8-1.2' }];
+FAKE_CATALOG = [{ 'Показатель': 'МНО', 'Код': 'INR', 'Норма (мужчины)': '0.8-1.2', 'Норма (женщины)': '0.8-1.2' }];
 refreshCatalog_(null);
 eq('МНО 1.4 выше своей нормы', checkNorm_('INR', 1.4, 'male').status, 'high');
 eq('МНО 1.0 в своей норме', checkNorm_('INR', 1.0, 'male').status, 'normal');
 
 // ---------- Личные нормы (дети) ----------
 FAKE_CATALOG = [];
-FAKE_PERSONAL = [{ 'family_member_id': 'adel', 'Русское название': 'Гемоглобин', 'Код (indicator_key)': 'hemoglobin', 'Норма': '115-145' }];
+FAKE_PERSONAL = [{ 'Кто': 'adel', 'Показатель': 'Гемоглобин', 'Код': 'hemoglobin', 'Норма': '115-145' }];
 refreshCatalog_('adel');
 eq('детская норма: 120 = normal', checkNorm_('hemoglobin', 120, 'female').status, 'normal');
 refreshCatalog_('salim');
 eq('чужая детская норма не течёт', checkNorm_('hemoglobin', 118, 'male').status, 'low');
 
 // Личная норма побеждает справочник
-FAKE_CATALOG = [{ 'Русское название': 'Гемоглобин', 'Код (indicator_key)': 'hemoglobin', 'Норма (мужчины)': '90-110', 'Норма (женщины)': '90-110' }];
-FAKE_PERSONAL = [{ 'family_member_id': 'adel', 'Русское название': 'Гемоглобин', 'Код (indicator_key)': 'hemoglobin', 'Норма': '115-145' }];
+FAKE_CATALOG = [{ 'Показатель': 'Гемоглобин', 'Код': 'hemoglobin', 'Норма (мужчины)': '90-110', 'Норма (женщины)': '90-110' }];
+FAKE_PERSONAL = [{ 'Кто': 'adel', 'Показатель': 'Гемоглобин', 'Код': 'hemoglobin', 'Норма': '115-145' }];
 refreshCatalog_('adel');
 eq('личная норма важнее справочника', checkNorm_('hemoglobin', 120, 'female').status, 'normal');
 
@@ -146,7 +151,7 @@ eq('мусор вместо даты', parseFlexibleDate_('вчера'), null);
 // ---------- Справочник главнее кода ----------
 // Одни и те же показатели описаны и в NORMS, и в листе. Раньше код побеждал,
 // и переименование в таблице бот игнорировал.
-FAKE_CATALOG = [{ 'Русское название': 'Гемоглобин (Hb)', 'Код (indicator_key)': 'hemoglobin',
+FAKE_CATALOG = [{ 'Показатель': 'Гемоглобин (Hb)', 'Код': 'hemoglobin',
                   'Единицы': 'g/L', 'Норма (мужчины)': '', 'Норма (женщины)': '' }];
 FAKE_PERSONAL = [];
 refreshCatalog_(null);
@@ -161,6 +166,11 @@ eq('checkNorm_ отдаёт название из справочника',
    checkNorm_('hemoglobin', 150, 'male').label, 'Гемоглобин (Hb)');
 FAKE_CATALOG = []; FAKE_PERSONAL = [];
 refreshCatalog_(null);
+
+// ---------- Пол по-русски и по-английски ----------
+eq('женский = женская норма', checkNorm_('hemoglobin', 125, 'женский').status, 'normal');
+eq('мужской = мужская норма', checkNorm_('hemoglobin', 125, 'мужской').status, 'low');
+eq('старое female ещё понимается', checkNorm_('hemoglobin', 125, 'female').status, 'normal');
 
 // ---------- normalizeDate_ ----------
 // Ключевой момент широкого листа: дату Google Sheets может отдать объектом
