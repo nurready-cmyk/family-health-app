@@ -38,7 +38,7 @@ function refreshEntrySheets() {
 
 /** Забыть всё, что бот держит в кэше. Страховка, если что-то разошлось. */
 function dropAllCaches() {
-  [SHEET_FAMILY, SHEET_USERS, SHEET_CATALOG, SHEET_PERSONAL_NORMS, SHEET_KB]
+  [SHEET_FAMILY, SHEET_USERS, SHEET_CATALOG, SHEET_PERSONAL_NORMS, SHEET_KB, SHEET_FEATURES]
     .forEach(dropSheetCache_);
   SpreadsheetApp.getActive().toast('Кэш сброшен — бот перечитает листы.', 'Health OS', 5);
 }
@@ -219,6 +219,24 @@ function applyValidations_() {
         .setAllowInvalid(true)   // разрешаем своё: не каждое обследование попадёт в справочник
         .setHelpText('Выберите из справочника обследований или впишите своё.')
         .build());
+  }
+
+  // Особенности организма: кто — из списка, тип — из фиксированного набора,
+  // чтобы в выгрузке для ИИ не оказалось пяти написаний слова «аллергия».
+  var features = ss_().getSheetByName(SHEET_FEATURES);
+  if (features) {
+    features.getRange(2, 1, features.getMaxRows() - 1, 1).setDataValidation(members);
+    features.getRange(2, 2, features.getMaxRows() - 1, 1).setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireValueInList(FEATURE_TYPES, true)
+        .setAllowInvalid(false)
+        .setHelpText('Выберите тип особенности.')
+        .build());
+    features.setFrozenRows(1);
+    features.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#e8f0fe');
+    features.setColumnWidth(1, 120);
+    features.setColumnWidth(2, 220);
+    features.setColumnWidth(3, 560);
   }
 
   var personal = ss_().getSheetByName(SHEET_PERSONAL_NORMS);

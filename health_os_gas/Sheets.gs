@@ -12,6 +12,7 @@ var SHEET_KB = 'Мои правила';
 var SHEET_ANALYSES = 'Анализы';
 var SHEET_CATALOG = 'Справочник анализов';
 var SHEET_PERSONAL_NORMS = 'Личные нормы';
+var SHEET_FEATURES = 'Особенности';
 var SHEET_SESSIONS = 'Служебное';
 
 function ss_() {
@@ -249,6 +250,25 @@ function addMedicalRecord_(recordDate, memberId, eventType, summary, documentUrl
     'Дата': recordDate, 'Кто': memberId, 'Что это было': eventType,
     'Заключение': summary, 'Ссылка на документ': documentUrl, 'Служебный id': newId_()
   });
+}
+
+// ---------- Особенности организма ----------
+// Постоянные свойства человека: аллергии, непереносимости, хронические
+// болезни, ограничения по питанию. В отличие от листа «Мои правила», который
+// срабатывает при отклонении показателя, это верно всегда — и именно эти
+// строки должен видеть ИИ, когда ему отдают базу целиком.
+
+function getFeatures_(memberId) {
+  return cachedRows_(SHEET_FEATURES).filter(function (r) {
+    return String(r['Кто']).trim() === memberId;
+  });
+}
+
+function addFeature_(memberId, type, description) {
+  appendRow_(SHEET_FEATURES, {
+    'Кто': memberId, 'Тип': type, 'Описание': description, 'Служебный id': newId_()
+  });
+  dropSheetCache_(SHEET_FEATURES);
 }
 
 function addKnowledgeRule_(memberId, ruleText) {

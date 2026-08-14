@@ -64,6 +64,7 @@ var MENU_ANALYSIS = '📊 Анализы';
 var MENU_EXAM = '🩺 Обследования';
 var MENU_REPORT = '📈 Отчёт';
 var MENU_ADD_RULE = '🧠 Моё правило';
+var MENU_FEATURE = '🧬 Особенности';
 
 /** Постоянное меню внизу чата — то же, что было в Python-версии. */
 function mainMenuKeyboard() {
@@ -71,7 +72,7 @@ function mainMenuKeyboard() {
     keyboard: [
       [MENU_LOG, MENU_ANALYSIS],
       [MENU_EXAM, MENU_REPORT],
-      [MENU_ADD_RULE]
+      [MENU_ADD_RULE, MENU_FEATURE]
     ],
     resize_keyboard: true
   };
@@ -104,6 +105,25 @@ function genderKeyboard() {
       [{ text: 'Мужской', callback_data: 'gender:мужской' }],
       [{ text: 'Женский', callback_data: 'gender:женский' }]
     ]
+  };
+}
+
+var FEATURE_TYPES = [
+  'Аллергия',
+  'Непереносимость',
+  'Хроническое заболевание',
+  'Ограничение по питанию',
+  'Постоянное лекарство',
+  'Перенесённая операция',
+  'Прочее'
+];
+
+/** Тип особенности. callback_data: "feature:<номер в FEATURE_TYPES>" */
+function featureTypesKeyboard() {
+  return {
+    inline_keyboard: FEATURE_TYPES.map(function (t, i) {
+      return [{ text: t, callback_data: 'feature:' + i }];
+    })
   };
 }
 

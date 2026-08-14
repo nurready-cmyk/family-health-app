@@ -50,9 +50,66 @@ function handleUpdate_(update) {
   // Продолжение начатого сценария.
   if (session.state) { continueFlow_(u, access, session); return; }
 
+  // Свободная строка без всякого меню: «Адель МНО 2,5 срб 2 15.07.2025».
+  if (tryQuickAnalysis_(u, access)) return;
+
   sendMessage(u.chatId,
-    'Не понял 🙂 Пользуйтесь кнопками меню внизу, либо отправьте голосовое сообщение или фото документа.',
+    'Не понял 🙂\n\nМожно писать анализы прямо строкой, без кнопок:\n' +
+    '<i>МНО 2,5 С-реактивный белок 2 15.07.2025</i>\n\n' +
+    'Имя в начале — за кого записать: <i>Адель гемоглобин 120</i>.\n' +
+    'Без даты запишу сегодняшним числом.',
     mainMenuKeyboard());
+}
+
+/**
+ * Разобрать сообщение как анализы, без захода в меню.
+ * Возвращает true, если получилось — тогда обычный ответ «не понял» не нужен.
+ */
+function tryQuickAnalysis_(u, access) {
+  if (!u.text || u.text.charAt(0) === '/') return false;
+
+  var picked = pickMemberFromText_(access, u.text);
+  var memberId = picked.memberId ||
+    (access.allowedMembers.length === 1 ? access.allowedMembers[0].id : null);
+
+  refreshCatalog_(memberId);
+  var when = extractDate_(picked.rest);
+  var indicators = parseAnalysisText_(when.rest);
+  if (!Object.keys(indicators).length) return false;
+  var unknown = unknownIndicators_(when.rest);
+
+  var entryDate = when.date || today_();
+  if (!memberId) {
+    setSession_(u.chatId, 'quick:member',
+      { flow: 'quick', date: entryDate, indicators: indicators, unknown: unknown });
+    sendMessage(u.chatId,
+      'Понял показатели (' + entryDate + '). За кого записать?',
+      membersKeyboard(access.allowedMembers));
+    return true;
+  }
+  recordAnalysis_(u, access, memberId, indicators, entryDate, unknown);
+  return true;
+}
+
+/**
+ * Найти в тексте имя из семьи и вырезать его.
+ * Ищем только среди доступных этому человеку — чужое имя правами не станет.
+ */
+function pickMemberFromText_(access, text) {
+  var lower = String(text).toLowerCase();
+  var best = null, bestLen = 0;
+  access.allowedMembers.forEach(function (m) {
+    var name = m.id.toLowerCase();
+    if (name && lower.indexOf(name) !== -1 && name.length > bestLen) {
+      best = m; bestLen = name.length;
+    }
+  });
+  if (!best) return { memberId: null, rest: text };
+  var at = lower.indexOf(best.id.toLowerCase());
+  return {
+    memberId: best.id,
+    rest: text.slice(0, at) + ' ' + text.slice(at + best.id.length)
+  };
 }
 
 function tryBootstrapAdmin_(u) {
@@ -73,6 +130,7 @@ function matchStarter_(text) {
   map[MENU_EXAM] = startExam_;       map['/exam'] = startExam_;
   map[MENU_REPORT] = startReport_;   map['/report'] = startReport_;
   map[MENU_ADD_RULE] = startAddRule_; map['/add_rule'] = startAddRule_;
+  map[MENU_FEATURE] = startFeature_;  map['/feature'] = startFeature_;
   map['/add_family_member'] = startAddFamilyMember_;
   return map[text] || null;
 }
@@ -147,6 +205,12 @@ function startAddRule_(u, access) {
   });
 }
 
+function startFeature_(u, access) {
+  askMemberOrProceed_(u, access, 'feature', 'feature:type', function (uu) {
+    sendMessage(uu.chatId, 'Что это за особенность?', featureTypesKeyboard());
+  });
+}
+
 function startReport_(u, access) {
   askMemberOrProceed_(u, access, 'report', 'report:go', function (uu, data) {
     sendReport_(uu, resolveAccess_(uu.userId), data.memberId);
@@ -189,6 +253,12 @@ function continueFlow_(u, access, session) {
     } else if (flow === 'report') {
       clearSession_(u.chatId);
       sendReport_(u, access, data.memberId);
+    } else if (flow === 'quick') {
+      clearSession_(u.chatId);
+      recordAnalysis_(u, access, data.memberId, data.indicators, data.date, data.unknown);
+    } else if (flow === 'feature') {
+      setSession_(u.chatId, 'feature:type', data);
+      sendMessage(u.chatId, 'Что это за особенность?', featureTypesKeyboard());
     } else if (flow === 'voice') {
       setSession_(u.chatId, 'voice:confirm', data);
       sendVoiceConfirm_(u, data);
@@ -205,12 +275,13 @@ function continueFlow_(u, access, session) {
   switch (state) {
     // --- Первичная настройка администратора ---
     case 'bootstrap:name':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите имя текстом.'); return; }
       data.name = u.text;
       setSession_(u.chatId, 'bootstrap:gender', data);
       sendMessage(u.chatId, 'Ваш пол?', genderKeyboard());
       return;
     case 'bootstrap:gender':
-      if (!u.callbackData) return;
+      if (!u.callbackData) { sendMessage(u.chatId, 'Выберите пол кнопкой.', genderKeyboard()); return; }
       data.gender = u.callbackData.split(':')[1];
       setSession_(u.chatId, 'bootstrap:year', data);
       sendMessage(u.chatId, 'Год рождения? (например 1986)');
@@ -227,12 +298,13 @@ function continueFlow_(u, access, session) {
 
     // --- Добавление члена семьи ---
     case 'addmember:name':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите имя текстом.'); return; }
       data.name = u.text;
       setSession_(u.chatId, 'addmember:gender', data);
       sendMessage(u.chatId, 'Пол?', genderKeyboard());
       return;
     case 'addmember:gender':
-      if (!u.callbackData) return;
+      if (!u.callbackData) { sendMessage(u.chatId, 'Выберите пол кнопкой.', genderKeyboard()); return; }
       data.gender = u.callbackData.split(':')[1];
       setSession_(u.chatId, 'addmember:year', data);
       sendMessage(u.chatId, 'Год рождения?');
@@ -247,12 +319,16 @@ function continueFlow_(u, access, session) {
 
     // --- Дневник ---
     case 'log:metric':
-      if (!u.callbackData || u.callbackData.indexOf('metric:') !== 0) return;
+      if (!u.callbackData || u.callbackData.indexOf('metric:') !== 0) {
+        sendMessage(u.chatId, 'Выберите метрику кнопкой.', metricsKeyboard());
+        return;
+      }
       data.metricType = u.callbackData.split(':')[1];
       setSession_(u.chatId, 'log:value', data);
       sendMessage(u.chatId, METRIC_LABELS[data.metricType] + ' — что записать?');
       return;
     case 'log:value':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите значение текстом.'); return; }
       data.value = u.text;
       setSession_(u.chatId, 'log:notes', data);
       sendMessage(u.chatId,
@@ -260,6 +336,7 @@ function continueFlow_(u, access, session) {
         'Заметка — необязательный комментарий с контекстом (например «после хорошего сна»). Если добавить нечего, отправьте «-».');
       return;
     case 'log:notes':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите заметку текстом или отправьте «-».'); return; }
       var notes = u.text === '-' ? '' : u.text;
       addLog_(today_(), data.memberId, data.metricType, data.value, notes);
       clearSession_(u.chatId);
@@ -268,26 +345,42 @@ function continueFlow_(u, access, session) {
 
     // --- Анализы ---
     case 'analysis:date':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите дату текстом.'); return; }
+      // Человек часто пишет всё сразу — «15.07.2025 гемоглобин 135».
+      // Тогда спрашивать показатели отдельным шагом незачем.
+      refreshCatalog_(data.memberId);
+      var whenAndValues = extractDate_(u.text);
+      var straightaway = parseAnalysisText_(whenAndValues.rest);
+      if (Object.keys(straightaway).length) {
+        recordAnalysis_(u, access, data.memberId, straightaway,
+                        whenAndValues.date || today_(),
+                        unknownIndicators_(whenAndValues.rest));
+        clearSession_(u.chatId);
+        return;
+      }
       var aDate = parseFlexibleDate_(u.text);
       if (!aDate) { sendMessage(u.chatId, 'Не понял дату. Формат: <i>15.07.2025</i> или «сегодня».'); return; }
       data.date = aDate;
       setSession_(u.chatId, 'analysis:values', data);
       sendMessage(u.chatId,
-        '📊 Напишите показатели через запятую или каждый на новой строке.\nНапример:\n<i>гемоглобин 135, глюкоза 5.2, давление 120/80</i>');
+        '📊 Напишите показатели. Разделители не обязательны:\n' +
+        '<i>гемоглобин 135 глюкоза 5.2 давление 120/80</i>');
       return;
     case 'analysis:values':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите показатели текстом.'); return; }
       refreshCatalog_(data.memberId);
       var indicators = parseAnalysisText_(u.text);
       if (!Object.keys(indicators).length) {
         sendMessage(u.chatId, 'Не смог распознать показатели. Попробуйте формат: <i>гемоглобин 135</i>');
         return;
       }
-      recordAnalysis_(u, access, data.memberId, indicators, data.date);
+      recordAnalysis_(u, access, data.memberId, indicators, data.date, unknownIndicators_(u.text));
       clearSession_(u.chatId);
       return;
 
     // --- Обследования ---
     case 'exam:date':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите дату текстом.'); return; }
       var eDate = parseFlexibleDate_(u.text);
       if (!eDate) { sendMessage(u.chatId, 'Не понял дату. Формат: <i>15.07.2025</i> или «сегодня».'); return; }
       data.date = eDate;
@@ -295,18 +388,42 @@ function continueFlow_(u, access, session) {
       sendMessage(u.chatId, 'Что это было? Например: <i>УЗИ</i>, <i>приём кардиолога</i>, <i>рентген</i>.');
       return;
     case 'exam:type':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите текстом, что это было.'); return; }
       data.eventType = u.text;
       setSession_(u.chatId, 'exam:summary', data);
       sendMessage(u.chatId, 'Что сказали / результат / заключение?');
       return;
     case 'exam:summary':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите заключение текстом.'); return; }
       addMedicalRecord_(data.date, data.memberId, data.eventType, u.text, '');
       clearSession_(u.chatId);
       sendMessage(u.chatId, '✅ Записано (' + data.date + '): ' + esc_(data.eventType), mainMenuKeyboard());
       return;
 
+    // --- Особенности организма ---
+    case 'feature:type':
+      if (!u.callbackData || u.callbackData.indexOf('feature:') !== 0) {
+        sendMessage(u.chatId, 'Выберите тип кнопкой ниже.', featureTypesKeyboard());
+        return;
+      }
+      data.featureType = FEATURE_TYPES[Number(u.callbackData.split(':')[1])] || 'Прочее';
+      setSession_(u.chatId, 'feature:text', data);
+      sendMessage(u.chatId,
+        data.featureType + ' — опишите одним сообщением.\n' +
+        'Например: <i>аллергия на манго, сыпь</i> или <i>нельзя много калия, почки</i>');
+      return;
+    case 'feature:text':
+      if (!u.text) { sendMessage(u.chatId, 'Нужен текст одним сообщением.'); return; }
+      addFeature_(data.memberId, data.featureType, u.text);
+      clearSession_(u.chatId);
+      sendMessage(u.chatId,
+        '🧬 Записал в «Особенности». Это будет видно и в отчёте, и при выгрузке базы в ИИ.',
+        mainMenuKeyboard());
+      return;
+
     // --- Личное правило ---
     case 'rule:text':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите правило текстом.'); return; }
       addKnowledgeRule_(data.memberId, u.text);
       clearSession_(u.chatId);
       sendMessage(u.chatId, '🧠 Правило сохранено. Оно всплывёт, когда упомянутый показатель отклонится от нормы.', mainMenuKeyboard());
@@ -314,7 +431,7 @@ function continueFlow_(u, access, session) {
 
     // --- Подтверждение голоса ---
     case 'voice:confirm':
-      if (!u.callbackData) return;
+      if (!u.callbackData) { sendMessage(u.chatId, 'Нажмите «Да» или «Отмена».', confirmKeyboard()); return; }
       if (u.callbackData === 'confirm:yes') {
         addLog_(today_(), data.memberId, data.metricType, data.value, data.notes || '');
         sendMessage(u.chatId, '✅ Записано в дневник.', mainMenuKeyboard());
@@ -326,7 +443,7 @@ function continueFlow_(u, access, session) {
 
     // --- Подтверждение фото ---
     case 'photo:confirm':
-      if (!u.callbackData) return;
+      if (!u.callbackData) { sendMessage(u.chatId, 'Нажмите «Да» или «Отмена».', confirmKeyboard()); return; }
       if (u.callbackData === 'confirm:yes') {
         var member = getMemberById_(access, data.memberId);
         var url = savePhotoToDrive_(data.photoFileId, member ? member.name : '');
@@ -346,7 +463,7 @@ function today_() {
 
 // ---------- Анализы: запись + рекомендации ----------
 
-function recordAnalysis_(u, access, memberId, indicators, entryDate) {
+function recordAnalysis_(u, access, memberId, indicators, entryDate, unknown) {
   var member = getMemberById_(access, memberId);
   if (!member) { sendMessage(u.chatId, 'Нет прав вносить данные за этого члена семьи.'); return; }
 
@@ -364,6 +481,11 @@ function recordAnalysis_(u, access, memberId, indicators, entryDate) {
   });
 
   var text = '📊 Записал (' + entryDate + '):\n' + lines.join('\n');
+  if (unknown && unknown.length) {
+    text += '\n\n⚠️ Не понял и не записал: <b>' + esc_(unknown.join(', ')) + '</b>.\n' +
+      'Добавьте показатель в лист «Справочник анализов» — и он заработает, ' +
+      'включая сокращение в колонке «Синонимы».';
+  }
   text += recommendationsBlock_(memberId, member.gender, abnormal);
   sendMessage(u.chatId, text, mainMenuKeyboard());
 }
@@ -399,6 +521,12 @@ function sendReport_(u, access, memberId) {
 /** Личные правила впереди общих рекомендаций — как и в Python-версии. */
 function recommendationsBlock_(memberId, gender, abnormalKeys) {
   var block = '';
+  var features = getFeatures_(memberId);
+  if (features.length) {
+    block += '\n\n🧬 Особенности:\n' + features.map(function (f) {
+      return '• ' + esc_(f['Тип']) + ': ' + esc_(f['Описание']);
+    }).join('\n');
+  }
   var personal = getMatchingPersonalRules_(memberId, abnormalKeys);
   if (personal.length) {
     block += '\n\n🧠 Из ваших личных заметок:\n' +

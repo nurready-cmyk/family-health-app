@@ -62,6 +62,8 @@ var entrySrc = readFile(BASE + 'Entry.gs');
 eval(entrySrc.match(/function transliterate_[\s\S]*?\n}\n/)[0]);
 eval(entrySrc.match(/function uniqueIndicatorKey_[\s\S]*?\n}\n/)[0]);
 
+function todayIsoForTest() { return Utilities.formatDate(new Date(), null, null); }
+
 // --- Мини-фреймворк ---
 var passed = 0, failed = 0, log = [];
 function ok(name, cond) {
@@ -137,6 +139,54 @@ eq('давление', parseAnalysisText_('давление 120/80'), { systolic
 eq('длинный алиас побеждает', parseAnalysisText_('холестерин общий 5.0'), { cholesterol: 5.0 });
 eq('каждый на новой строке', parseAnalysisText_('алт 30\nаст 25'), { alt: 30, ast: 25 });
 eq('мусор игнорируется', parseAnalysisText_('привет как дела'), {});
+
+// ---------- Свободная строка: «МНО 2,5 С реактивный белок 2» ----------
+// Главный сценарий ручного ввода. Прежний парсер резал строку по запятым и
+// на тексте без разделителей склеивал два показателя в один.
+FAKE_CATALOG = [
+  { 'Показатель': 'МНО', 'Код': 'INR', 'Синонимы': '', 'Норма (мужчины)': '', 'Норма (женщины)': '' },
+  { 'Показатель': 'С-реактивный белок', 'Код': 'crp', 'Синонимы': 'СРБ, CRP', 'Норма (мужчины)': '0-5', 'Норма (женщины)': '0-5' }
+];
+FAKE_PERSONAL = [];
+refreshCatalog_(null);
+
+eq('два показателя без разделителей',
+   parseAnalysisText_('МНО 2,5 С реактивный белок 2'), { INR: 2.5, crp: 2 });
+eq('дефис в названии не мешает',
+   parseAnalysisText_('С-реактивный белок 4'), { crp: 4 });
+eq('синоним из справочника', parseAnalysisText_('СРБ 7'), { crp: 7 });
+eq('латинский синоним', parseAnalysisText_('crp 7'), { crp: 7 });
+eq('цифра внутри названия не значение',
+   parseAnalysisText_('витамин д3 45'), { vitaminD: 45 });
+eq('B12 не распадается', parseAnalysisText_('витамин b12 450'), { vitaminB12: 450 });
+eq('давление вместе с остальным',
+   parseAnalysisText_('давление 120/80 глюкоза 5.2'), { systolic: 120, diastolic: 80, glucose: 5.2 });
+eq('запятые тоже работают',
+   parseAnalysisText_('гемоглобин 135, глюкоза 5.2'), { hemoglobin: 135, glucose: 5.2 });
+eq('мусор без чисел', parseAnalysisText_('привет как дела'), {});
+eq('число без названия игнорируется', parseAnalysisText_('42'), {});
+
+// Незнакомое название не должно пропадать молча.
+eq('неизвестный показатель попадает в список непонятого',
+   unknownIndicators_('давление 120/80 пульс 70'), ['пульс']);
+eq('всё понятно — список пуст', unknownIndicators_('гемоглобин 135'), []);
+eq('несколько незнакомых',
+   unknownIndicators_('пульс 70 сатурация 98'), ['пульс', 'сатурация']);
+
+// ---------- Дата внутри свободной строки ----------
+eq('дата вырезается, показатели остаются',
+   parseAnalysisText_(extractDate_('МНО 2,5 15.07.2025').rest), { INR: 2.5 });
+eq('дата распознана', extractDate_('МНО 2,5 15.07.2025').date, '2025-07-15');
+eq('дата ISO', extractDate_('гемоглобин 135 2025-07-15').date, '2025-07-15');
+eq('двузначный год', extractDate_('МНО 2 15.07.25').date, '2025-07-15');
+eq('несуществующая дата не берётся', extractDate_('МНО 2 32.13.2025').date, null);
+eq('без даты — null', extractDate_('МНО 2,5').date, null);
+eq('«сегодня» понимается', extractDate_('гемоглобин 135 сегодня').date, todayIsoForTest());
+eq('дата не съедает показатель',
+   parseAnalysisText_(extractDate_('15.07.2025 гемоглобин 135').rest), { hemoglobin: 135 });
+
+FAKE_CATALOG = []; FAKE_PERSONAL = [];
+refreshCatalog_(null);
 
 // ---------- parseFlexibleDate_ ----------
 var todayIso = Utilities.formatDate(new Date(), null, null);
