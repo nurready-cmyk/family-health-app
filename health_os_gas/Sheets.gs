@@ -415,7 +415,81 @@ function getLatestLabRanges_(memberId) {
   return ranges;
 }
 
-// ---------- Sessions// ---------- Sessions// ---------- Sessions (состояние диалога) ----------
+/**
+ * История значений показателя у человека, от старых к новым.
+ * sinceDate — необязательная нижняя граница ('yyyy-MM-dd'); null — вся история.
+ * Возвращает [{ date, value, labMin, labMax }].
+ */
+function analysisHistory_(memberId, code, sinceDate) {
+  var sheet = analysesSheet_();
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  var rows = [];
+  values.slice(1).forEach(function (r) {
+    if (String(r[ANALYSES_COL_MEMBER - 1]).trim() !== memberId) return;
+    if (String(r[ANALYSES_COL_CODE - 1]).trim() !== code) return;
+    var raw = r[ANALYSES_COL_VALUE - 1];
+    if (raw === '' || raw == null) return;
+    var date = normalizeDate_(r[ANALYSES_COL_DATE - 1]);
+    if (sinceDate && date < sinceDate) return;
+    var min = parseFloat(r[ANALYSES_COL_LAB_MIN - 1]);
+    var max = parseFloat(r[ANALYSES_COL_LAB_MAX - 1]);
+    rows.push({
+      date: date,
+      value: parseFloat(String(raw).replace(',', '.')),
+      labMin: isNaN(min) ? null : min,
+      labMax: isNaN(max) ? null : max
+    });
+  });
+  rows.sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+  return rows;
+}
+
+/** Название обследования → его группа, по справочнику. */
+function examNameToGroup_() {
+  var map = {};
+  cachedRows_(SHEET_EXAM_CATALOG).forEach(function (row) {
+    var name = String(row['Название'] || '').trim();
+    var group = String(row['Группа'] || '').trim();
+    if (name && group) map[name] = group;
+  });
+  return map;
+}
+
+/**
+ * История обследований у человека, от старых к новым.
+ * filter: {type:'name',value} — конкретный вид; {type:'group',value} — вся
+ * группа (например, все УЗИ); {type:'all'} — все подряд.
+ * Возвращает [{ date, type, summary }].
+ */
+function examHistory_(memberId, filter, sinceDate) {
+  var sheet = ss_().getSheetByName(SHEET_MEDICAL);
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  var headers = values[0].map(function (h) { return String(h).trim(); });
+  var dateCol = headers.indexOf('Дата');
+  var memberCol = headers.indexOf('Кто');
+  var typeCol = headers.indexOf('Что это было');
+  var summaryCol = headers.indexOf('Заключение');
+  var nameToGroup = filter.type === 'group' ? examNameToGroup_() : null;
+
+  var rows = [];
+  values.slice(1).forEach(function (r) {
+    if (String(r[memberCol]).trim() !== memberId) return;
+    var type = String(r[typeCol] || '').trim();
+    if (filter.type === 'name' && type !== filter.value) return;
+    if (filter.type === 'group' && nameToGroup[type] !== filter.value) return;
+    var date = normalizeDate_(r[dateCol]);
+    if (sinceDate && date < sinceDate) return;
+    rows.push({ date: date, type: type, summary: String(r[summaryCol] || '') });
+  });
+  rows.sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+  return rows;
+}
+
+// ---------- Sessions (состояние диалога) ----------
 // Apps Script не хранит состояние между запросами — каждый шаг диалога
 // записывается в лист Sessions (аналог MemoryStorage в aiogram, но
 // переживает даже перезапуск, в отличие от Python-версии).

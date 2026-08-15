@@ -52,11 +52,16 @@ function handleUpdate_(update) {
   // Свободная строка без всякого меню: «Адель МНО 2,5 срб 2 15.07.2025».
   if (tryQuickAnalysis_(u, access)) return;
 
+  // Вопрос про историю: «МНО за год», «гемоглобин», «узи за полгода».
+  if (tryAnalysisQuery_(u, access)) return;
+  if (tryExamQuery_(u, access)) return;
+
   sendMessage(u.chatId,
     'Не понял 🙂\n\nМожно писать анализы прямо строкой, без кнопок:\n' +
     '<i>МНО 2,5 С-реактивный белок 2 15.07.2025</i>\n\n' +
     'Имя в начале — за кого записать: <i>Адель гемоглобин 120</i>.\n' +
-    'Без даты запишу сегодняшним числом.',
+    'Без даты запишу сегодняшним числом.\n\n' +
+    'Или спросите историю: <i>МНО за год</i>, <i>гемоглобин</i>, <i>узи за полгода</i>.',
     mainMenuKeyboard());
 }
 
@@ -109,6 +114,87 @@ function pickMemberFromText_(access, text) {
     memberId: best.id,
     rest: text.slice(0, at) + ' ' + text.slice(at + best.id.length)
   };
+}
+
+/** Максимум строк в одном ответе — Telegram режет длинные сообщения. */
+var HISTORY_ROWS_LIMIT = 40;
+var EXAM_ROWS_LIMIT = 20;
+
+/**
+ * Вопрос про историю показателя: «МНО за год», «гемоглобин». Без имени и
+ * без единственного члена семьи не подхватываем — гадать, о ком спросили,
+ * рискованнее, чем ответить «не понял».
+ */
+function tryAnalysisQuery_(u, access) {
+  if (!u.text || u.text.charAt(0) === '/') return false;
+
+  var picked = pickMemberFromText_(access, u.text);
+  var memberId = picked.memberId ||
+    (access.allowedMembers.length === 1 ? access.allowedMembers[0].id : null);
+  if (!memberId) return false;
+
+  refreshCatalog_(memberId);
+  var period = extractPeriod_(picked.rest);
+  var key = containsIndicatorKey_(period.rest);
+  if (!key) return false;
+
+  var member = getMemberById_(access, memberId);
+  var rows = analysisHistory_(memberId, key, period.sinceDate);
+  var periodNote = period.sinceDate ? ' с ' + period.sinceDate : ' (вся история)';
+
+  if (!rows.length) {
+    sendMessage(u.chatId,
+      'Записей «' + esc_(indicatorLabel_(key)) + '» у ' + esc_(member.name) + periodNote + ' не нашёл.',
+      mainMenuKeyboard());
+    return true;
+  }
+
+  var shown = rows.length > HISTORY_ROWS_LIMIT ? rows.slice(-HISTORY_ROWS_LIMIT) : rows;
+  var lines = shown.map(function (r) {
+    var labRange = (r.labMin != null && r.labMax != null) ? [r.labMin, r.labMax] : null;
+    var check = checkNorm_(key, r.value, member.gender, labRange);
+    var mark = check && check.status === 'low' ? ' ⬇️' : (check && check.status === 'high' ? ' ⬆️' : '');
+    return '• ' + r.date + ' — <b>' + r.value + '</b> ' + esc_(indicatorUnit_(key)) + mark;
+  });
+
+  var head = esc_(indicatorLabel_(key)) + ' — ' + esc_(member.name) + periodNote + ':\n';
+  if (rows.length > shown.length) head += '(показаны последние ' + shown.length + ' из ' + rows.length + ')\n';
+  sendMessage(u.chatId, head + lines.join('\n'), mainMenuKeyboard());
+  return true;
+}
+
+/** Вопрос про историю обследований: «узи за год», «обследования». */
+function tryExamQuery_(u, access) {
+  if (!u.text || u.text.charAt(0) === '/') return false;
+
+  var picked = pickMemberFromText_(access, u.text);
+  var memberId = picked.memberId ||
+    (access.allowedMembers.length === 1 ? access.allowedMembers[0].id : null);
+  if (!memberId) return false;
+
+  var period = extractPeriod_(picked.rest);
+  var filter = matchExamFilter_(period.rest);
+  if (!filter) return false;
+
+  var member = getMemberById_(access, memberId);
+  var rows = examHistory_(memberId, filter, period.sinceDate);
+  var periodNote = period.sinceDate ? ' с ' + period.sinceDate : ' (вся история)';
+
+  if (!rows.length) {
+    sendMessage(u.chatId, 'Обследований у ' + esc_(member.name) + periodNote + ' не нашёл.', mainMenuKeyboard());
+    return true;
+  }
+
+  var shown = rows.length > EXAM_ROWS_LIMIT ? rows.slice(-EXAM_ROWS_LIMIT) : rows;
+  var lines = shown.map(function (r) {
+    var summary = r.summary.length > 150 ? r.summary.slice(0, 150) + '…' : r.summary;
+    return '• ' + r.date + ' — <b>' + esc_(r.type) + '</b>' + (summary ? '\n  ' + esc_(summary) : '');
+  });
+
+  var head = esc_(member.name) + ' — обследования' + periodNote + ':\n';
+  if (rows.length > shown.length) head += '(показаны последние ' + shown.length + ' из ' + rows.length + ')\n';
+  sendMessage(u.chatId, head + lines.join('\n'), mainMenuKeyboard());
+  return true;
 }
 
 function tryBootstrapAdmin_(u) {

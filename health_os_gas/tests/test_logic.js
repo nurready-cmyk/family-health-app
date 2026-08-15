@@ -32,9 +32,12 @@ var FAKE_CATALOG = [];
 var FAKE_PERSONAL = [];
 var SHEET_CATALOG = 'Справочник анализов';
 var SHEET_PERSONAL_NORMS = 'Личные нормы';
+var SHEET_EXAM_CATALOG = 'Справочник обследований';
+var FAKE_EXAMS = [];
 function readAll_(name) {
   if (name === SHEET_CATALOG) return FAKE_CATALOG;
   if (name === SHEET_PERSONAL_NORMS) return FAKE_PERSONAL;
+  if (name === SHEET_EXAM_CATALOG) return FAKE_EXAMS;
   return [];
 }
 // В боевом коде это кэш на 6 часов; в тестах кэшировать нечего.
@@ -268,6 +271,48 @@ eq('С-реактивный белок', transliterate_('С-реактивный
 eq('Витамин B12 (латиница+цифры)', transliterate_('Витамин B12'), 'vitamin_b12');
 eq('код не повторяется', uniqueIndicatorKey_('МНО', ['mno']), 'mno_2');
 eq('свободный код без суффикса', uniqueIndicatorKey_('МНО', ['alt']), 'mno');
+
+// ---------- extractPeriod_: «за год», «за 6 месяцев» ----------
+var today = new Date();
+function yearsAgoIso(n) { var d = new Date(today); d.setFullYear(d.getFullYear() - n); return Utilities.formatDate(d, null, null); }
+function monthsAgoIso(n) { var d = new Date(today); d.setMonth(d.getMonth() - n); return Utilities.formatDate(d, null, null); }
+function daysAgoIso(n) { var d = new Date(today); d.setDate(d.getDate() - n); return Utilities.formatDate(d, null, null); }
+
+eq('«за 1 год»', extractPeriod_('МНО за 1 год').sinceDate, yearsAgoIso(1));
+eq('«за год» без числа = 1 год', extractPeriod_('МНО за год').sinceDate, yearsAgoIso(1));
+eq('«за последний год» — прилагательное не мешает', extractPeriod_('МНО за последний год').sinceDate, yearsAgoIso(1));
+eq('исходная фраза пользователя из бага', extractPeriod_('дай мне все анализы МНО за последний 1 год').sinceDate, yearsAgoIso(1));
+eq('«за 6 месяцев»', extractPeriod_('гемоглобин за 6 месяцев').sinceDate, monthsAgoIso(6));
+eq('«за неделю» = 7 дней', extractPeriod_('узи за неделю').sinceDate, daysAgoIso(7));
+eq('«за 30 дней»', extractPeriod_('мно за 30 дней').sinceDate, daysAgoIso(30));
+eq('без периода — вся история (null)', extractPeriod_('гемоглобин').sinceDate, null);
+eq('«годовщина» не ловится как период', extractPeriod_('за годовщину свадьбы 5').sinceDate, null);
+eq('период вырезается из текста', extractPeriod_('МНО за 1 год').rest.indexOf('год'), -1);
+eq('название остаётся после вырезания периода',
+   extractPeriod_('МНО за 1 год').rest.replace(/\s+/g, ' ').trim(), 'МНО');
+
+// ---------- containsIndicatorKey_: вопрос, а не запись ----------
+FAKE_CATALOG = [{ 'Показатель': 'МНО', 'Код': 'INR', 'Норма (мужчины)': '', 'Норма (женщины)': '' }];
+FAKE_PERSONAL = [];
+refreshCatalog_(null);
+eq('находит показатель в вопросе', containsIndicatorKey_('покажи мно за год'), 'INR');
+FAKE_CATALOG = []; refreshCatalog_(null);
+eq('находит показатель сам по себе', containsIndicatorKey_('гемоглобин'), 'hemoglobin');
+eq('«аст» внутри «контрастное» не находится', containsIndicatorKey_('контрастное вещество'), null);
+eq('длинное название побеждает короткое', containsIndicatorKey_('холестерин общий'), 'cholesterol');
+eq('ничего не найдено — null', containsIndicatorKey_('как погода сегодня'), null);
+
+// ---------- matchExamFilter_: «узи за год», «обследования» ----------
+FAKE_EXAMS = [
+  { 'Группа': 'УЗИ', 'Название': 'УЗИ органов брюшной полости', 'Что смотрят / примечание': '' },
+  { 'Группа': 'УЗИ', 'Название': 'УЗИ щитовидной железы', 'Что смотрят / примечание': '' },
+  { 'Группа': 'Диагностика', 'Название': 'ЭКГ', 'Что смотрят / примечание': '' }
+];
+eq('конкретное название находится', matchExamFilter_('покажи УЗИ щитовидной железы'), { type: 'name', value: 'УЗИ щитовидной железы' });
+eq('группа находится по слову «узи»', matchExamFilter_('узи за год'), { type: 'group', value: 'УЗИ' });
+eq('«обследования» без уточнения — все подряд', matchExamFilter_('покажи обследования за год'), { type: 'all' });
+eq('ничего похожего — null', matchExamFilter_('покажи анализы'), null);
+FAKE_EXAMS = [];
 
 // ---------- Итог ----------
 var out = '\n' + (failed ? log.join('\n') + '\n\n' : '') +

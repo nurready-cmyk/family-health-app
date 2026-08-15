@@ -327,3 +327,106 @@ function scanIndicatorValues_(text) {
 
   return found;
 }
+
+// ---------- Вопросы про историю: «МНО за год», «узи за полгода» ----------
+// В отличие от записи (где число обязано стоять сразу после названия),
+// здесь числа может не быть вообще — «покажи гемоглобин» тоже вопрос.
+// Из-за этого используется отдельное, менее строгое сопоставление названия:
+// «где угодно в тексте, но на границе слова» — не там же по всему тексту как
+// подстрока (это как раз и было первым найденным багом с «контрастное»).
+
+var PERIOD_RE = new RegExp(
+  'за\\s+(?:последн[а-яёА-ЯЁ]*\\s+)?(\\d+)?\\s*' +
+  '(лет|года|год|месяцев|месяца|месяц|недель|недели|неделю|дней|дня|день)(?![а-яёА-ЯЁ])',
+  'i'
+);
+
+/**
+ * Вынуть относительный период из текста: «за год», «за 6 месяцев», «за
+ * последний год», «за 30 дней». Возвращает { sinceDate, rest }.
+ * sinceDate === null — период не указан (или явно «за всё время»): значит
+ * показываем всю историю, без ограничения по дате.
+ */
+function extractPeriod_(text) {
+  var s = String(text);
+  var tz = Session.getScriptTimeZone();
+
+  var m = s.match(PERIOD_RE);
+  if (m) {
+    var n = m[1] ? Number(m[1]) : 1;
+    var unit = m[2].toLowerCase();
+    var since = new Date();
+    if (unit.indexOf('год') === 0 || unit.indexOf('лет') === 0) since.setFullYear(since.getFullYear() - n);
+    else if (unit.indexOf('месяц') === 0) since.setMonth(since.getMonth() - n);
+    else if (unit.indexOf('недел') === 0) since.setDate(since.getDate() - n * 7);
+    else since.setDate(since.getDate() - n);
+    return { sinceDate: Utilities.formatDate(since, tz, 'yyyy-MM-dd'), rest: s.replace(m[0], ' ') };
+  }
+
+  if (/за\s+вс[её]\s+время|весь\s+период/i.test(s)) {
+    return { sinceDate: null, rest: s.replace(/за\s+вс[её]\s+время|весь\s+период/i, ' ') };
+  }
+
+  return { sinceDate: null, rest: s };
+}
+
+/**
+ * Найти показатель где угодно в тексте (не обязательно перед числом) — для
+ * вопросов вида «МНО за год» или просто «гемоглобин». Поиск на границе слова
+ * (обёртка пробелами), а не любой подстрокой — иначе «аст» нашёлся бы внутри
+ * «контрастное», как в записи.
+ */
+function containsIndicatorKey_(text) {
+  var norm = ' ' + normalizeForMatch_(text) + ' ';
+  var best = null, bestLen = 0;
+  function consider(key, alias) {
+    var a = normalizeForMatch_(alias);
+    if (!a) return;
+    if (norm.indexOf(' ' + a + ' ') !== -1 && a.length > bestLen) { best = key; bestLen = a.length; }
+  }
+  Object.keys(INDICATOR_ALIASES).forEach(function (key) {
+    INDICATOR_ALIASES[key].forEach(function (alias) { consider(key, alias); });
+  });
+  Object.keys(_labelOverrides).forEach(function (key) { consider(key, _labelOverrides[key]); });
+  Object.keys(_aliasOverrides).forEach(function (key) {
+    _aliasOverrides[key].forEach(function (alias) { consider(key, alias); });
+  });
+  Object.keys(_customIndicators).forEach(function (key) { consider(key, _customIndicators[key].label); });
+  return best;
+}
+
+/**
+ * Вид обследования, упомянутый в тексте: конкретное название («УЗИ органов
+ * брюшной полости»), группа («узи», «мрт») или просто «обследования» без
+ * уточнения — тогда без фильтра по типу. null, если про обследования речи
+ * вообще нет.
+ */
+function matchExamFilter_(text) {
+  var norm = ' ' + normalizeForMatch_(text) + ' ';
+
+  var bestName = null, bestNameLen = 0;
+  cachedRows_(SHEET_EXAM_CATALOG).forEach(function (row) {
+    var name = normalizeForMatch_(row['Название'] || '');
+    if (name && norm.indexOf(' ' + name + ' ') !== -1 && name.length > bestNameLen) {
+      bestName = row['Название']; bestNameLen = name.length;
+    }
+  });
+  if (bestName) return { type: 'name', value: bestName };
+
+  var groups = {};
+  cachedRows_(SHEET_EXAM_CATALOG).forEach(function (row) {
+    var g = String(row['Группа'] || '').trim();
+    if (g) groups[g] = true;
+  });
+  var bestGroup = null, bestGroupLen = 0;
+  Object.keys(groups).forEach(function (g) {
+    var ng = normalizeForMatch_(g);
+    if (ng && norm.indexOf(' ' + ng + ' ') !== -1 && ng.length > bestGroupLen) {
+      bestGroup = g; bestGroupLen = ng.length;
+    }
+  });
+  if (bestGroup) return { type: 'group', value: bestGroup };
+
+  if (normalizeForMatch_(text).indexOf('обследован') !== -1) return { type: 'all' };
+  return null;
+}
