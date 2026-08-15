@@ -335,6 +335,8 @@ function scanIndicatorValues_(text) {
 // «где угодно в тексте, но на границе слова» — не там же по всему тексту как
 // подстрока (это как раз и было первым найденным багом с «контрастное»).
 
+var HALF_YEAR_RE = /за\s+(?:последн[а-яёА-ЯЁ]*\s+)?(?:пол\s*-?\s*года|полугода)/i;
+
 var PERIOD_RE = new RegExp(
   'за\\s+(?:последн[а-яёА-ЯЁ]*\\s+)?(\\d+)?\\s*' +
   '(лет|года|год|месяцев|месяца|месяц|недель|недели|неделю|дней|дня|день)(?![а-яёА-ЯЁ])',
@@ -343,13 +345,21 @@ var PERIOD_RE = new RegExp(
 
 /**
  * Вынуть относительный период из текста: «за год», «за 6 месяцев», «за
- * последний год», «за 30 дней». Возвращает { sinceDate, rest }.
+ * последний год», «за полгода», «за 30 дней». Возвращает { sinceDate, rest }.
  * sinceDate === null — период не указан (или явно «за всё время»): значит
  * показываем всю историю, без ограничения по дате.
  */
 function extractPeriod_(text) {
   var s = String(text);
   var tz = Session.getScriptTimeZone();
+
+  // Проверяем раньше общего PERIOD_RE: «полгода» — одно слово, не «пол» + «года».
+  var half = s.match(HALF_YEAR_RE);
+  if (half) {
+    var sinceHalf = new Date();
+    sinceHalf.setMonth(sinceHalf.getMonth() - 6);
+    return { sinceDate: Utilities.formatDate(sinceHalf, tz, 'yyyy-MM-dd'), rest: s.replace(half[0], ' ') };
+  }
 
   var m = s.match(PERIOD_RE);
   if (m) {
@@ -371,18 +381,34 @@ function extractPeriod_(text) {
 }
 
 /**
+ * «Встречается по смыслу» в уже обёрнутом пробелами normalizeForMatch_-тексте
+ * (norm), с допуском на падежи: «ферритин» находит и «ферритина» (родительный
+ * падеж — «результат ферритина»), «гемоглобин» — «гемоглобином».
+ *
+ * Допуск действует только для фраз от 5 символов: короткие аббревиатуры
+ * (МНО, АСТ, АЛТ, ТТГ) в естественной речи не склоняются, а «мно» как
+ * начало слова совпало бы с «много». Отбрасываем максимум одну гласную на
+ * конце («глюкоза» → стем «глюкоз», ловит «глюкозы», «глюкозу», «глюкозе»).
+ */
+function containsPhrase_(norm, phrase) {
+  var p = normalizeForMatch_(phrase);
+  if (!p) return false;
+  if (norm.indexOf(' ' + p + ' ') !== -1) return true;
+  if (p.length < 5) return false;
+  var stem = /[аоеуыь]$/.test(p) ? p.slice(0, -1) : p;
+  return norm.indexOf(' ' + stem) !== -1;
+}
+
+/**
  * Найти показатель где угодно в тексте (не обязательно перед числом) — для
- * вопросов вида «МНО за год» или просто «гемоглобин». Поиск на границе слова
- * (обёртка пробелами), а не любой подстрокой — иначе «аст» нашёлся бы внутри
- * «контрастное», как в записи.
+ * вопросов вида «МНО за год», «результат ферритина» или просто «гемоглобин».
  */
 function containsIndicatorKey_(text) {
   var norm = ' ' + normalizeForMatch_(text) + ' ';
   var best = null, bestLen = 0;
   function consider(key, alias) {
     var a = normalizeForMatch_(alias);
-    if (!a) return;
-    if (norm.indexOf(' ' + a + ' ') !== -1 && a.length > bestLen) { best = key; bestLen = a.length; }
+    if (a && containsPhrase_(norm, alias) && a.length > bestLen) { best = key; bestLen = a.length; }
   }
   Object.keys(INDICATOR_ALIASES).forEach(function (key) {
     INDICATOR_ALIASES[key].forEach(function (alias) { consider(key, alias); });
@@ -406,9 +432,9 @@ function matchExamFilter_(text) {
 
   var bestName = null, bestNameLen = 0;
   cachedRows_(SHEET_EXAM_CATALOG).forEach(function (row) {
-    var name = normalizeForMatch_(row['Название'] || '');
-    if (name && norm.indexOf(' ' + name + ' ') !== -1 && name.length > bestNameLen) {
-      bestName = row['Название']; bestNameLen = name.length;
+    var name = row['Название'] || '';
+    if (name && containsPhrase_(norm, name) && name.length > bestNameLen) {
+      bestName = name; bestNameLen = name.length;
     }
   });
   if (bestName) return { type: 'name', value: bestName };
@@ -420,10 +446,7 @@ function matchExamFilter_(text) {
   });
   var bestGroup = null, bestGroupLen = 0;
   Object.keys(groups).forEach(function (g) {
-    var ng = normalizeForMatch_(g);
-    if (ng && norm.indexOf(' ' + ng + ' ') !== -1 && ng.length > bestGroupLen) {
-      bestGroup = g; bestGroupLen = ng.length;
-    }
+    if (containsPhrase_(norm, g) && g.length > bestGroupLen) { bestGroup = g; bestGroupLen = g.length; }
   });
   if (bestGroup) return { type: 'group', value: bestGroup };
 
