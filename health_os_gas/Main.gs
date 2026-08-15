@@ -131,6 +131,7 @@ function matchStarter_(text) {
   map[MENU_REPORT] = startReport_;   map['/report'] = startReport_;
   map[MENU_ADD_RULE] = startAddRule_; map['/add_rule'] = startAddRule_;
   map[MENU_FEATURE] = startFeature_;  map['/feature'] = startFeature_;
+  map[MENU_MEDS] = startMed_;         map['/med'] = startMed_;
   map['/add_family_member'] = startAddFamilyMember_;
   return map[text] || null;
 }
@@ -211,6 +212,12 @@ function startFeature_(u, access) {
   });
 }
 
+function startMed_(u, access) {
+  askMemberOrProceed_(u, access, 'med', 'med:drug', function (uu) {
+    sendMessage(uu.chatId, 'Какой препарат?');
+  });
+}
+
 function startReport_(u, access) {
   askMemberOrProceed_(u, access, 'report', 'report:go', function (uu, data) {
     sendReport_(uu, resolveAccess_(uu.userId), data.memberId);
@@ -259,6 +266,9 @@ function continueFlow_(u, access, session) {
     } else if (flow === 'feature') {
       setSession_(u.chatId, 'feature:type', data);
       sendMessage(u.chatId, 'Что это за особенность?', featureTypesKeyboard());
+    } else if (flow === 'med') {
+      setSession_(u.chatId, 'med:drug', data);
+      sendMessage(u.chatId, 'Какой препарат?');
     } else if (flow === 'voice') {
       setSession_(u.chatId, 'voice:confirm', data);
       sendVoiceConfirm_(u, data);
@@ -421,6 +431,23 @@ function continueFlow_(u, access, session) {
         mainMenuKeyboard());
       return;
 
+    // --- Лекарства ---
+    case 'med:drug':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите название препарата текстом.'); return; }
+      data.drug = u.text;
+      setSession_(u.chatId, 'med:dosage', data);
+      sendMessage(u.chatId, 'Доза и как часто принимать? Например: <i>2.5 мг, раз в день утром</i>');
+      return;
+    case 'med:dosage':
+      if (!u.text) { sendMessage(u.chatId, 'Напишите дозу текстом.'); return; }
+      addMedication_(data.memberId, data.drug, u.text, today_());
+      clearSession_(u.chatId);
+      sendMessage(u.chatId,
+        '💊 Записал: ' + esc_(data.drug) + ' — ' + esc_(u.text) + '.\n' +
+        'Дату окончания или причину можно дописать прямо в таблице, в листе «Лекарства».',
+        mainMenuKeyboard());
+      return;
+
     // --- Личное правило ---
     case 'rule:text':
       if (!u.text) { sendMessage(u.chatId, 'Напишите правило текстом.'); return; }
@@ -469,12 +496,13 @@ function recordAnalysis_(u, access, memberId, indicators, entryDate, unknown) {
 
   refreshCatalog_(memberId);
   addAnalyses_(memberId, entryDate, indicators);
+  var labRanges = getLatestLabRanges_(memberId);
 
   var lines = [];
   var abnormal = [];
   Object.keys(indicators).forEach(function (key) {
     var value = indicators[key];
-    var check = checkNorm_(key, value, member.gender);
+    var check = checkNorm_(key, value, member.gender, labRanges[key]);
     var status = check ? ({ normal: '✅ норма', low: '⬇️ ниже нормы', high: '⬆️ выше нормы' })[check.status] : '';
     if (check && check.status !== 'normal') abnormal.push(key);
     lines.push('• ' + esc_(indicatorLabel_(key)) + ': <b>' + esc_(value) + '</b> ' + esc_(indicatorUnit_(key)) + (status ? ' — ' + status : ''));
@@ -496,6 +524,7 @@ function sendReport_(u, access, memberId) {
 
   refreshCatalog_(memberId);
   var latest = getLatestValues_(memberId);
+  var labRanges = getLatestLabRanges_(memberId);
   var keys = Object.keys(latest);
   if (!keys.length) {
     sendMessage(u.chatId, 'Нет сохранённых анализов. Внесите через кнопку 📊 Анализы.', mainMenuKeyboard());
@@ -507,7 +536,7 @@ function sendReport_(u, access, memberId) {
   keys.forEach(function (key) {
     var value = parseFloat(String(latest[key]).replace(',', '.'));
     if (isNaN(value)) return;
-    var check = checkNorm_(key, value, member.gender);
+    var check = checkNorm_(key, value, member.gender, labRanges[key]);
     var status = check ? ({ normal: '✅ норма', low: '⬇️ ниже нормы', high: '⬆️ выше нормы' })[check.status] : '';
     if (check && check.status !== 'normal') abnormal.push(key);
     lines.push('• ' + esc_(indicatorLabel_(key)) + ': <b>' + value + '</b> ' + esc_(indicatorUnit_(key)) + (status ? ' — ' + status : ''));
@@ -521,6 +550,12 @@ function sendReport_(u, access, memberId) {
 /** Личные правила впереди общих рекомендаций — как и в Python-версии. */
 function recommendationsBlock_(memberId, gender, abnormalKeys) {
   var block = '';
+  var meds = getActiveMedications_(memberId);
+  if (meds.length) {
+    block += '\n\n💊 Принимает сейчас:\n' + meds.map(function (m) {
+      return '• ' + esc_(m['Препарат']) + (m['Доза и приём'] ? ' — ' + esc_(m['Доза и приём']) : '');
+    }).join('\n');
+  }
   var features = getFeatures_(memberId);
   if (features.length) {
     block += '\n\n🧬 Особенности:\n' + features.map(function (f) {

@@ -31,14 +31,14 @@ function onOpen() {
  */
 function refreshEntrySheets() {
   ensureExamCatalog_();
-  syncAnalysesColumns_();
+  ensureAnalysesHeaders_();
   applyValidations_();
   SpreadsheetApp.getActive().toast('Списки и колонки обновлены.', 'Health OS', 5);
 }
 
 /** Забыть всё, что бот держит в кэше. Страховка, если что-то разошлось. */
 function dropAllCaches() {
-  [SHEET_FAMILY, SHEET_USERS, SHEET_CATALOG, SHEET_PERSONAL_NORMS, SHEET_KB, SHEET_FEATURES]
+  [SHEET_FAMILY, SHEET_USERS, SHEET_CATALOG, SHEET_PERSONAL_NORMS, SHEET_KB, SHEET_FEATURES, SHEET_MEDS]
     .forEach(dropSheetCache_);
   SpreadsheetApp.getActive().toast('Кэш сброшен — бот перечитает листы.', 'Health OS', 5);
 }
@@ -61,6 +61,7 @@ function onEdit(e) {
 
   if (name === SHEET_CATALOG) fillCatalogKey_(e);
   else if (name === SHEET_PERSONAL_NORMS) fillPersonalNormKey_(e);
+  else if (name === SHEET_ANALYSES) fillAnalysisIndicator_(e);
 }
 
 function headerIndex_(sheet) {
@@ -107,6 +108,28 @@ function fillPersonalNormKey_(e) {
   if (key) sheet.getRange(row, keyCol).setValue(key);
 }
 
+/**
+ * Лист «Анализы»: выбрали показатель из выпадающего списка — единицы и
+ * машинный код подставляем сами, руками их вводить не нужно.
+ */
+function fillAnalysisIndicator_(e) {
+  var sheet = e.range.getSheet();
+  var row = e.range.getRow();
+  if (row < 2 || e.range.getColumn() !== ANALYSES_COL_INDICATOR) return;
+
+  var label = String(sheet.getRange(row, ANALYSES_COL_INDICATOR).getValue()).trim();
+  if (!label) {
+    sheet.getRange(row, ANALYSES_COL_UNIT).setValue('');
+    sheet.getRange(row, ANALYSES_COL_CODE).setValue('');
+    return;
+  }
+  var key = headerToKeyMap_()[label.toLowerCase()];
+  if (!key) return;
+  refreshCatalog_(null);  // подтянуть единицы для этого запуска триггера
+  sheet.getRange(row, ANALYSES_COL_UNIT).setValue(indicatorUnit_(key));
+  sheet.getRange(row, ANALYSES_COL_CODE).setValue(key);
+}
+
 /** «Мочевина» → mochevina; «МНО» → mno. Латиница, чтобы ключ был машинным. */
 function transliterate_(text) {
   var map = {
@@ -133,55 +156,6 @@ function uniqueIndicatorKey_(name, taken) {
   return candidate;
 }
 
-// ---------- Лист Analyses: колонки по справочнику ----------
-
-/**
- * Дописать в лист Analyses колонку для каждого показателя справочника,
- * которого там ещё нет. Существующие колонки не двигаются и не переименовываются:
- * уже введённые значения обязаны остаться на месте.
- */
-function syncAnalysesColumns_() {
-  var sheet = analysesSheet_();
-  var headers = analysesHeaders_(sheet);
-  if (!headers.length) {
-    sheet.getRange(1, 1, 1, 2).setValues([['Дата', 'Кто']]);
-    headers = ['Дата', 'Кто'];
-  }
-
-  var present = {};
-  headers.forEach(function (h) { present[h.toLowerCase()] = true; });
-
-  var missing = [];
-  readAll_(SHEET_CATALOG).forEach(function (row) {
-    var label = String(row['Показатель'] || '').trim();
-    if (label && !present[label.toLowerCase()]) {
-      present[label.toLowerCase()] = true;
-      missing.push(label);
-    }
-  });
-
-  if (missing.length) {
-    ensureColumns_(sheet, headers.length + missing.length);
-    sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
-  }
-
-  var lastCol = Math.max(headers.length + missing.length, 2);
-  styleAnalysesHeader_(sheet, null, lastCol);
-  sheet.getRange(1, ANALYSES_COL_DATE, sheet.getMaxRows(), 1)
-    .setNumberFormat('yyyy-mm-dd');
-  sheet.getRange(1, 1).setNumberFormat('@');  // заголовок «Дата» остаётся текстом
-  sheet.setFrozenRows(1);
-  sheet.setFrozenColumns(2);
-}
-
-/** Оформление шапки: одна колонка (col) или весь диапазон до lastCol. */
-function styleAnalysesHeader_(sheet, col, lastCol) {
-  var range = col
-    ? sheet.getRange(1, col)
-    : sheet.getRange(1, 1, 1, lastCol || sheet.getLastColumn());
-  range.setFontWeight('bold').setBackground('#e8f0fe').setWrap(true);
-}
-
 // ---------- Выпадающие списки ----------
 
 function memberNamesRange_() {
@@ -203,6 +177,16 @@ function applyValidations_() {
   var analyses = analysesSheet_();
   analyses.getRange(2, ANALYSES_COL_MEMBER, analyses.getMaxRows() - 1, 1)
     .setDataValidation(members);
+  analyses.getRange(2, ANALYSES_COL_INDICATOR, analyses.getMaxRows() - 1, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInRange(ss_().getSheetByName(SHEET_CATALOG).getRange('B2:B500'), true)
+      .setAllowInvalid(false)
+      .setHelpText('Выберите показатель из справочника — сначала впишите его в «Справочник анализов», если его там ещё нет.')
+      .build());
+  analyses.setFrozenRows(1);
+  analyses.setFrozenColumns(3);
+  analyses.getRange(1, 1, 1, ANALYSES_HEADERS.length)
+    .setFontWeight('bold').setBackground('#e8f0fe').setWrap(true);
 
   var medical = ss_().getSheetByName(SHEET_MEDICAL);
   var medHeaders = medical.getRange(1, 1, 1, medical.getLastColumn()).getValues()[0]
@@ -237,6 +221,17 @@ function applyValidations_() {
     features.setColumnWidth(1, 120);
     features.setColumnWidth(2, 220);
     features.setColumnWidth(3, 560);
+  }
+
+  // Лекарства: кто — из списка семьи, остальное — свободный текст.
+  var meds = ss_().getSheetByName(SHEET_MEDS);
+  if (meds) {
+    meds.getRange(2, 1, meds.getMaxRows() - 1, 1).setDataValidation(members);
+    meds.setFrozenRows(1);
+    meds.getRange(1, 1, 1, 7).setFontWeight('bold').setBackground('#e8f0fe');
+    meds.setColumnWidth(1, 120);
+    meds.setColumnWidth(2, 220);
+    meds.setColumnWidth(3, 260);
   }
 
   var personal = ss_().getSheetByName(SHEET_PERSONAL_NORMS);
@@ -291,6 +286,11 @@ var EXAM_CATALOG_SEED = [
   ['Прочее', 'Медосмотр / диспансеризация', '']
 ];
 
+/** Жирная синяя шапка на диапазон — общее оформление для служебных листов. */
+function styleHeaderRow_(sheet, lastCol) {
+  sheet.getRange(1, 1, 1, lastCol).setFontWeight('bold').setBackground('#e8f0fe').setWrap(true);
+}
+
 /** Создать справочник обследований, если его ещё нет. Существующий не трогаем. */
 function ensureExamCatalog_() {
   var sheet = ss_().getSheetByName(SHEET_EXAM_CATALOG);
@@ -298,7 +298,7 @@ function ensureExamCatalog_() {
   sheet = ss_().insertSheet(SHEET_EXAM_CATALOG);
   sheet.getRange(1, 1, 1, 3).setValues([['Группа', 'Название', 'Что смотрят / примечание']]);
   sheet.getRange(2, 1, EXAM_CATALOG_SEED.length, 3).setValues(EXAM_CATALOG_SEED);
-  styleAnalysesHeader_(sheet, null, 3);
+  styleHeaderRow_(sheet, 3);
   sheet.setFrozenRows(1);
   sheet.setColumnWidth(2, 260);
   sheet.setColumnWidth(3, 320);
@@ -308,36 +308,36 @@ function ensureExamCatalog_() {
 // ---------- Подсветка отклонений ----------
 
 /**
- * Прокрасить значения листа Analyses: красным — вне нормы, зелёным — в норме.
- * Нормы берутся так же, как их считает бот, включая личные нормы детей.
+ * Прокрасить колонку «Значение» листа «Анализы»: красным — вне нормы,
+ * зелёным — в норме. Нормы берутся так же, как их считает бот: сначала
+ * норма с бланка (если вписана), потом личные нормы, потом справочник.
  */
 function highlightOutOfRange() {
   var sheet = analysesSheet_();
   var values = sheet.getDataRange().getValues();
   if (values.length < 2) return;
 
-  var headers = values[0].map(function (h) { return String(h).trim(); });
-  var byHeader = headerToKeyMap_();
   var genders = {};
   getFamilyMembers_().forEach(function (m) { genders[m.id] = m.gender; });
 
+  var colors = [];
   for (var r = 1; r < values.length; r++) {
-    var memberId = String(values[r][ANALYSES_COL_MEMBER - 1]).trim();
-    if (!memberId) continue;
+    var row = values[r];
+    var memberId = String(row[ANALYSES_COL_MEMBER - 1]).trim();
+    var code = String(row[ANALYSES_COL_CODE - 1]).trim();
+    var raw = row[ANALYSES_COL_VALUE - 1];
+    var value = parseFloat(String(raw).replace(',', '.'));
+    if (!memberId || !code || raw === '' || raw == null || isNaN(value)) { colors.push([null]); continue; }
+
     refreshCatalog_(memberId);
-    var colors = [];
-    for (var c = ANALYSES_COL_FIRST_INDICATOR - 1; c < headers.length; c++) {
-      var raw = values[r][c];
-      var value = parseFloat(String(raw).replace(',', '.'));
-      if (raw === '' || raw == null || isNaN(value)) { colors.push(null); continue; }
-      var key = byHeader[headers[c].toLowerCase()] || headers[c];
-      var check = checkNorm_(key, value, genders[memberId]);
-      colors.push(!check ? null : (check.status === 'normal' ? '#e6f4ea' : '#fce8e6'));
-    }
-    if (colors.length) {
-      sheet.getRange(r + 1, ANALYSES_COL_FIRST_INDICATOR, 1, colors.length)
-        .setBackgrounds([colors]);
-    }
+    var labMin = parseFloat(row[ANALYSES_COL_LAB_MIN - 1]);
+    var labMax = parseFloat(row[ANALYSES_COL_LAB_MAX - 1]);
+    var labRange = (!isNaN(labMin) && !isNaN(labMax)) ? [labMin, labMax] : null;
+    var check = checkNorm_(code, value, genders[memberId], labRange);
+    colors.push([!check ? null : (check.status === 'normal' ? '#e6f4ea' : '#fce8e6')]);
+  }
+  if (colors.length) {
+    sheet.getRange(2, ANALYSES_COL_VALUE, colors.length, 1).setBackgrounds(colors);
   }
   SpreadsheetApp.getActive().toast('Готово: красным — вне нормы, зелёным — в норме.', 'Health OS', 5);
 }

@@ -91,6 +91,25 @@ eq('125 норма для female', checkNorm_('hemoglobin', 125, 'female').statu
 eq('125 low для male', checkNorm_('hemoglobin', 125, 'male').status, 'low');
 eq('неизвестный показатель', checkNorm_('unknown', 1, 'male'), null);
 
+// ---------- Норма с бланка лаборатории ----------
+// Разные лаборатории считают по-разному; норма с конкретного бланка точнее
+// общего справочника и должна побеждать всё остальное.
+FAKE_CATALOG = []; FAKE_PERSONAL = [];
+refreshCatalog_(null);
+eq('норма с бланка побеждает встроенную', checkNorm_('hemoglobin', 100, 'male', [90, 110]).status, 'normal');
+eq('норма с бланка помечена как fromLab', checkNorm_('hemoglobin', 100, 'male', [90, 110]).fromLab, true);
+eq('без нормы с бланка — обычная не помечена', checkNorm_('hemoglobin', 150, 'male').fromLab, false);
+eq('без нормы с бланка — как раньше', checkNorm_('hemoglobin', 100, 'male').status, 'low');
+eq('битая норма с бланка игнорируется', checkNorm_('hemoglobin', 150, 'male', [NaN, 110]).status, 'normal');
+eq('норма с бланка работает и для личных норм ребёнка',
+   (function () {
+     FAKE_PERSONAL = [{ 'Кто': 'adel', 'Показатель': 'Гемоглобин', 'Код': 'hemoglobin', 'Норма': '115-145' }];
+     refreshCatalog_('adel');
+     var r = checkNorm_('hemoglobin', 100, 'female', [90, 110]).status;
+     FAKE_PERSONAL = []; refreshCatalog_(null);
+     return r;
+   })(), 'normal');
+
 // ---------- Переопределение нормы из справочника ----------
 FAKE_CATALOG = [{ 'Показатель': 'Гемоглобин', 'Код': 'hemoglobin', 'Норма (мужчины)': '100-200', 'Норма (женщины)': '100-200' }];
 refreshCatalog_(null);

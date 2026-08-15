@@ -147,27 +147,35 @@ function indicatorUnit_(key) {
 /**
  * Сверить значение с нормой по полу. null — если показатель неизвестен или
  * норма для него нигде не задана (значение всё равно сохраняется, просто без
- * статуса). Возвращает { status:'normal'|'low'|'high', min, max, label, unit }.
+ * статуса). Возвращает { status:'normal'|'low'|'high', min, max, label, unit, fromLab }.
+ *
+ * labRange — необязательная норма с конкретного бланка лаборатории (колонки
+ * «Норма мин/макс (с бланка)» в листе «Анализы»). Разные лаборатории считают
+ * по-разному, и она точнее общего справочника — если задана, побеждает
+ * всё остальное: и справочник, и личные нормы, и встроенные нормы.
  */
-function checkNorm_(key, value, gender) {
-  var range, label, unit;
-  if (NORMS[key]) {
-    var base = NORMS[key];
-    var ov = _normOverrides[key];
-    range = ov ? (isFemale_(gender) ? ov.female : ov.male) : (isFemale_(gender) ? base.female : base.male);
-    label = indicatorLabel_(key); unit = indicatorUnit_(key);
-  } else if (_customIndicators[key]) {
-    var c = _customIndicators[key];
-    if (!c.male && !c.female) return null;
-    range = isFemale_(gender) ? (c.female || c.male) : (c.male || c.female);
-    label = indicatorLabel_(key); unit = indicatorUnit_(key);
-  } else {
-    return null;
+function checkNorm_(key, value, gender, labRange) {
+  var label = indicatorLabel_(key);
+  var unit = indicatorUnit_(key);
+  var fromLab = labRange && labRange.length === 2 && isFinite(labRange[0]) && isFinite(labRange[1]);
+  var range = fromLab ? labRange : null;
+
+  if (!range) {
+    if (NORMS[key]) {
+      var base = NORMS[key];
+      var ov = _normOverrides[key];
+      range = ov ? (isFemale_(gender) ? ov.female : ov.male) : (isFemale_(gender) ? base.female : base.male);
+    } else if (_customIndicators[key]) {
+      var c = _customIndicators[key];
+      range = isFemale_(gender) ? (c.female || c.male) : (c.male || c.female);
+    }
   }
+  if (!range) return null;
+
   var status = 'normal';
   if (value < range[0]) status = 'low';
   else if (value > range[1]) status = 'high';
-  return { status: status, min: range[0], max: range[1], label: label, unit: unit };
+  return { status: status, min: range[0], max: range[1], label: label, unit: unit, fromLab: !!fromLab };
 }
 
 /** Привести к виду, в котором сравниваются названия: «С-реактивный» = «с реактивный». */

@@ -284,19 +284,34 @@ function getKnowledgeRules_(memberId) {
     .sort(function (a, b) { return (Number(b['Важность']) || 0) - (Number(a['Важность']) || 0); });
 }
 
-// ---------- Анализы: широкий лист ----------
-// Лист Analyses устроен как бумажный бланк: строка = один человек на одну дату,
-// колонки = показатели («Дата | Кто | Гемоглобин | Глюкоза | ...»).
+// ---------- Анализы: длинный список ----------
+// Раньше лист был широким (строка = бланк, колонки = показатели). После
+// живого использования выяснилось, что 30-40 колонок неудобно листать, а
+// каждый новый показатель — это новая колонка чуть дальше вправо. Длинный
+// формат устраняет обе проблемы: столбцов всегда девять, а показатель
+// выбирается из выпадающего списка, который сам подтягивает справочник —
+// сначала вносите анализы в справочник, потом они появляются в списке здесь.
 //
-// Раньше он был «длинным» (строка на каждый показатель, со служебными id и
-// латинскими кодами). Широкий вариант выбран сознательно: в него быстро
-// вбивать бланк руками, он читается глазами без расшифровки кодов, и он же
-// понятен ChatGPT/Gemini, если выгрузить таблицу целиком — не нужен ни
-// отдельный лист для ручного ввода, ни синхронизация между ними.
+// Одна запись = одна строка. Повторный ввод той же даты/человека/показателя
+// обновляет существующую строку, а не плодит дубль — если на неё руками
+// вписали норму с бланка лаборатории, она не потеряется при обновлении из бота.
+//
+// Норма с бланка — необязательные колонки «Норма мин/макс (с бланка)».
+// Разные лаборатории считают по-разному, и норма именно с этого бланка точнее
+// общего справочника. Если её не вписали — используется справочник/личные
+// нормы/встроенные нормы, как раньше. См. checkNorm_ в Norms.gs.
 
 var ANALYSES_COL_DATE = 1;
 var ANALYSES_COL_MEMBER = 2;
-var ANALYSES_COL_FIRST_INDICATOR = 3;
+var ANALYSES_COL_INDICATOR = 3;
+var ANALYSES_COL_VALUE = 4;
+var ANALYSES_COL_UNIT = 5;
+var ANALYSES_COL_LAB_MIN = 6;
+var ANALYSES_COL_LAB_MAX = 7;
+var ANALYSES_COL_CODE = 8;
+var ANALYSES_COL_ROWID = 9;
+var ANALYSES_HEADERS = ['Дата', 'Кто', 'Показатель', 'Значение', 'Единицы',
+  'Норма мин (с бланка)', 'Норма макс (с бланка)', 'Код', 'Служебный id'];
 
 /** Значение ячейки с датой (Date или текст) → 'yyyy-MM-dd'. */
 function normalizeDate_(value) {
@@ -312,15 +327,19 @@ function analysesSheet_() {
   return ss_().getSheetByName(SHEET_ANALYSES);
 }
 
-function analysesHeaders_(sheet) {
-  var lastCol = sheet.getLastColumn();
-  if (lastCol < 1) return [];
-  return sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
-    return String(h).trim();
-  });
+/** Шапка листа «Анализы» на месте. Безопасно вызывать сколько угодно раз. */
+function ensureAnalysesHeaders_() {
+  var sheet = analysesSheet_();
+  var have = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), ANALYSES_HEADERS.length)).getValues()[0];
+  var ok = ANALYSES_HEADERS.every(function (h, i) { return String(have[i] || '').trim() === h; });
+  if (ok) return;
+  if (sheet.getMaxColumns() < ANALYSES_HEADERS.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), ANALYSES_HEADERS.length - sheet.getMaxColumns());
+  }
+  sheet.getRange(1, 1, 1, ANALYSES_HEADERS.length).setValues([ANALYSES_HEADERS]);
 }
 
-/** Название колонки листа «Анализы» → код показателя, по справочнику. */
+/** Название показателя (колонка «Показатель» справочника) → код. */
 function headerToKeyMap_() {
   var map = {};
   cachedRows_(SHEET_CATALOG).forEach(function (row) {
@@ -331,88 +350,44 @@ function headerToKeyMap_() {
   return map;
 }
 
-/**
- * Убедиться, что в листе есть нужное число колонок. Лист создан ровно по
- * ширине справочника, и без этого запись в первую же новую колонку падает
- * с «диапазон за пределами листа».
- */
-function ensureColumns_(sheet, needed) {
-  var have = sheet.getMaxColumns();
-  if (needed > have) sheet.insertColumnsAfter(have, needed - have);
-}
-
-/** Строка этого человека за эту дату; 0 — если такой ещё нет. */
-function findAnalysisRow_(sheet, memberId, entryDate) {
+/** Строка этого человека, этой даты, этого показателя; 0 — если такой ещё нет. */
+function findAnalysisRow_(sheet, memberId, entryDate, code) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return 0;
-  var keys = sheet.getRange(2, ANALYSES_COL_DATE, lastRow - 1, 2).getValues();
-  for (var i = 0; i < keys.length; i++) {
-    if (normalizeDate_(keys[i][0]) === entryDate &&
-        String(keys[i][1]).trim() === memberId) {
+  var rows = sheet.getRange(2, ANALYSES_COL_DATE, lastRow - 1, ANALYSES_COL_CODE).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (normalizeDate_(rows[i][ANALYSES_COL_DATE - 1]) === entryDate &&
+        String(rows[i][ANALYSES_COL_MEMBER - 1]).trim() === memberId &&
+        String(rows[i][ANALYSES_COL_CODE - 1]).trim() === code) {
       return i + 2;
     }
   }
   return 0;
 }
 
-/**
- * Записать пачку показателей {key: value} за одну дату одному человеку.
- *
- * Всё делается за считанные обращения к таблице независимо от того, сколько
- * показателей в бланке. Раньше на каждый показатель приходилось перечитывать
- * шапку и отдельно записывать ячейку — бланк из 15 строк превращался в 30
- * с лишним походов в Google, и «Записал» приходило с заметной паузой.
- */
+/** Записать пачку показателей {key: value} за одну дату одному человеку. */
 function addAnalyses_(memberId, entryDate, indicators) {
   var sheet = analysesSheet_();
-  var headers = analysesHeaders_(sheet);
-  if (headers.length < ANALYSES_COL_FIRST_INDICATOR - 1) {
-    headers = ['Дата', 'Кто'];
-    sheet.getRange(1, 1, 1, 2).setValues([headers]);
-  }
-
-  // Показатели, для которых колонки ещё нет, дописываем справа — одним махом.
-  var position = {};
-  headers.forEach(function (h, i) { position[h.toLowerCase()] = i + 1; });
-
-  var fresh = [];
-  var keys = Object.keys(indicators);
-  keys.forEach(function (key) {
-    var label = indicatorLabel_(key);
-    if (position[label.toLowerCase()] == null) {
-      position[label.toLowerCase()] = headers.length + fresh.length + 1;
-      fresh.push(label);
+  ensureAnalysesHeaders_();
+  Object.keys(indicators).forEach(function (key) {
+    var value = indicators[key];
+    var row = findAnalysisRow_(sheet, memberId, entryDate, key);
+    var labMin = '', labMax = '', id = newId_();
+    if (row) {
+      // Строка уже есть — норму с бланка, вписанную руками, не затираем.
+      var existing = sheet.getRange(row, ANALYSES_COL_LAB_MIN, 1, 4).getValues()[0];
+      labMin = existing[0]; labMax = existing[1]; id = existing[3] || id;
+    } else {
+      row = sheet.getLastRow() + 1;
     }
+    sheet.getRange(row, ANALYSES_COL_DATE, 1, ANALYSES_HEADERS.length).setValues([[
+      entryDate, memberId, indicatorLabel_(key), value, indicatorUnit_(key), labMin, labMax, key, id
+    ]]);
   });
-  if (fresh.length) {
-    ensureColumns_(sheet, headers.length + fresh.length);
-    sheet.getRange(1, headers.length + 1, 1, fresh.length).setValues([fresh]);
-    styleAnalysesHeader_(sheet, null, headers.length + fresh.length);
-  }
-
-  var width = headers.length + fresh.length;
-  var row = findAnalysisRow_(sheet, memberId, entryDate);
-  var values;
-  if (row) {
-    // Существующий бланк дополняем, а не затираем: в нём могли быть
-    // показатели, введённые руками.
-    values = sheet.getRange(row, 1, 1, width).getValues()[0];
-  } else {
-    row = Math.max(sheet.getLastRow(), 1) + 1;
-    values = [];
-    for (var i = 0; i < width; i++) values.push('');
-    values[ANALYSES_COL_DATE - 1] = entryDate;
-    values[ANALYSES_COL_MEMBER - 1] = memberId;
-  }
-
-  keys.forEach(function (key) {
-    values[position[indicatorLabel_(key).toLowerCase()] - 1] = indicators[key];
-  });
-  sheet.getRange(row, 1, 1, width).setValues([values]);
 }
 
 /**
- * Последнее известное значение каждого показателя: {indicator_key: value}.
+ * Последнее известное значение каждого показателя: {код: значение}.
  * Даты сравниваются приведёнными к 'yyyy-MM-dd' — иначе строка, которую Google
  * Sheets распознал как настоящую дату, сортировалась бы как «Mon Jun 10 2026»
  * и «последним» оказывался бы не тот анализ.
@@ -421,36 +396,75 @@ function getLatestValues_(memberId) {
   var sheet = analysesSheet_();
   var values = sheet.getDataRange().getValues();
   if (values.length < 2) return {};
-
-  var headers = values[0].map(function (h) { return String(h).trim(); });
-  var byHeader = headerToKeyMap_();
-  var keyByCol = {};
-  for (var c = ANALYSES_COL_FIRST_INDICATOR - 1; c < headers.length; c++) {
-    if (!headers[c]) continue;
-    // Колонки нет в справочнике — берём заголовок как ключ: значение
-    // сохранится и покажется, просто без сверки с нормой.
-    keyByCol[c] = byHeader[headers[c].toLowerCase()] || headers[c];
-  }
-
-  var latest = {};
-  values.slice(1)
-    .filter(function (r) {
-      return String(r[ANALYSES_COL_MEMBER - 1]).trim() === memberId;
-    })
-    .sort(function (a, b) {
-      return normalizeDate_(a[ANALYSES_COL_DATE - 1])
-        .localeCompare(normalizeDate_(b[ANALYSES_COL_DATE - 1]));
-    })
-    .forEach(function (r) {
-      Object.keys(keyByCol).forEach(function (c) {
-        var value = r[c];
-        if (value !== '' && value != null) latest[keyByCol[c]] = String(value);
-      });
-    });
+  var latest = {}, latestDate = {};
+  values.slice(1).forEach(function (r) {
+    if (String(r[ANALYSES_COL_MEMBER - 1]).trim() !== memberId) return;
+    var code = String(r[ANALYSES_COL_CODE - 1]).trim();
+    var value = r[ANALYSES_COL_VALUE - 1];
+    if (!code || value === '' || value == null) return;
+    var d = normalizeDate_(r[ANALYSES_COL_DATE - 1]);
+    if (!latestDate[code] || d >= latestDate[code]) {
+      latestDate[code] = d;
+      latest[code] = String(value);
+    }
+  });
   return latest;
 }
 
-// ---------- Sessions (состояние диалога) ----------
+/**
+ * Норма с бланка лаборатории для последнего значения каждого показателя, если
+ * её вписали: {код: [min, max]}. Используется только для отображения статуса
+ * (норма/не норма) в ответах бота — какие продукты рекомендовать (Rules.gs)
+ * по-прежнему решается по справочнику и личным нормам, чтобы опечатка в
+ * бланке не подменила диетические рекомендации.
+ */
+function getLatestLabRanges_(memberId) {
+  var sheet = analysesSheet_();
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return {};
+  var ranges = {}, latestDate = {};
+  values.slice(1).forEach(function (r) {
+    if (String(r[ANALYSES_COL_MEMBER - 1]).trim() !== memberId) return;
+    var code = String(r[ANALYSES_COL_CODE - 1]).trim();
+    if (!code) return;
+    var d = normalizeDate_(r[ANALYSES_COL_DATE - 1]);
+    if (latestDate[code] && d < latestDate[code]) return;
+    latestDate[code] = d;
+    var min = parseFloat(r[ANALYSES_COL_LAB_MIN - 1]);
+    var max = parseFloat(r[ANALYSES_COL_LAB_MAX - 1]);
+    ranges[code] = (!isNaN(min) && !isNaN(max)) ? [min, max] : null;
+  });
+  return ranges;
+}
+
+// ---------- Лекарства ----------
+// Приём препаратов меняет интерпретацию анализов (например, разжижающие
+// кровь лекарства и МНО), поэтому это отдельный лист, а не текст в
+// «Особенности». «По какую дату» пусто — значит, принимает сейчас.
+
+var SHEET_MEDS = 'Лекарства';
+
+function getMedications_(memberId) {
+  return cachedRows_(SHEET_MEDS).filter(function (r) {
+    return String(r['Кто']).trim() === memberId;
+  });
+}
+
+function getActiveMedications_(memberId) {
+  return getMedications_(memberId).filter(function (r) {
+    return !String(r['По какую дату'] || '').trim();
+  });
+}
+
+function addMedication_(memberId, drug, dosage, sinceDate) {
+  appendRow_(SHEET_MEDS, {
+    'Кто': memberId, 'Препарат': drug, 'Доза и приём': dosage,
+    'С какой даты': sinceDate, 'По какую дату': '', 'Причина': '', 'Служебный id': newId_()
+  });
+  dropSheetCache_(SHEET_MEDS);
+}
+
+// ---------- Sessions// ---------- Sessions (состояние диалога) ----------
 // Apps Script не хранит состояние между запросами — каждый шаг диалога
 // записывается в лист Sessions (аналог MemoryStorage в aiogram, но
 // переживает даже перезапуск, в отличие от Python-версии).

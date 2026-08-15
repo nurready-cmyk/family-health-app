@@ -65,6 +65,7 @@ var MENU_EXAM = '🩺 Обследования';
 var MENU_REPORT = '📈 Отчёт';
 var MENU_ADD_RULE = '🧠 Моё правило';
 var MENU_FEATURE = '🧬 Особенности';
+var MENU_MEDS = '💊 Лекарства';
 
 /** Постоянное меню внизу чата — то же, что было в Python-версии. */
 function mainMenuKeyboard() {
@@ -72,7 +73,8 @@ function mainMenuKeyboard() {
     keyboard: [
       [MENU_LOG, MENU_ANALYSIS],
       [MENU_EXAM, MENU_REPORT],
-      [MENU_ADD_RULE, MENU_FEATURE]
+      [MENU_ADD_RULE, MENU_FEATURE],
+      [MENU_MEDS]
     ],
     resize_keyboard: true
   };
