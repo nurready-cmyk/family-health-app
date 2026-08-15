@@ -188,6 +188,12 @@ function normalizeForMatch_(text) {
  * Сопоставить свободный текст с ключом показателя. Длинное название побеждает,
  * иначе «холестерин общий» всегда проигрывал бы «холестерину».
  *
+ * Название должно стоять прямо перед числом (concом строки-кандидата), а не
+ * где угодно внутри неё. Раньше «аст» находился как подстрока в середине
+ * слова «контрастное», а вопрос «дай МНО за последний 1 год» бот принимал за
+ * запись «МНО = 1» — название упоминалось где-то раньше по тексту, число не
+ * имело к нему отношения.
+ *
  * Ищем и по встроенным алиасам, и по названиям из справочника, и по колонке
  * «Синонимы» — чтобы для нового сокращения («СРБ») не приходилось править код.
  */
@@ -199,7 +205,17 @@ function matchIndicatorKey_(text) {
   function consider(key, alias) {
     var a = normalizeForMatch_(alias);
     if (!a) return;
-    if (norm.indexOf(a) !== -1 && a.length > bestLen) { best = key; bestLen = a.length; }
+    if (norm === a) {
+      if (a.length > bestLen) { best = key; bestLen = a.length; }
+      return;
+    }
+    // Название — суффикс кандидата, и перед ним граница слова (пробел),
+    // а не середина другого слова («контрАСТное»).
+    if (norm.length > a.length &&
+        norm.slice(norm.length - a.length) === a &&
+        norm.charAt(norm.length - a.length - 1) === ' ') {
+      if (a.length > bestLen) { best = key; bestLen = a.length; }
+    }
   }
 
   Object.keys(INDICATOR_ALIASES).forEach(function (key) {
