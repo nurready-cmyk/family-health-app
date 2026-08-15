@@ -1,7 +1,7 @@
-// ===== ГОЛОС И ФОТО ЧЕРЕЗ OPENAI =====
-// Замена локальным сервисам Python-версии: faster-whisper (крутился на Mac и
-// на серверах Google работать не может) → Whisper API. Фото и разбор текста —
-// те же модели, что были: gpt-4o и gpt-4o-mini.
+// ===== ФОТО ЧЕРЕЗ OPENAI =====
+// Разбор фото документа — та же модель, что была в Python-версии: gpt-4o.
+// Голосовой ввод (Whisper) убран вместе с дневником: это было единственное
+// место, куда он писал, — без дневника расшифровывать голос было бы не во что.
 
 function getOpenAiKey_() {
   var key = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
@@ -20,40 +20,6 @@ function openAiChat_(model, messages) {
   var body = JSON.parse(res.getContentText());
   if (body.error) throw new Error('OpenAI: ' + body.error.message);
   return body.choices[0].message.content;
-}
-
-/** Расшифровать голосовое сообщение (Telegram отдаёт .oga/opus — Whisper его понимает). */
-function transcribeVoice_(fileId) {
-  var blob = downloadTelegramFile_(fileId).setName('voice.oga');
-  var res = UrlFetchApp.fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'post',
-    headers: { Authorization: 'Bearer ' + getOpenAiKey_() },
-    payload: { file: blob, model: 'whisper-1', language: 'ru' },
-    muteHttpExceptions: true
-  });
-  var body = JSON.parse(res.getContentText());
-  if (body.error) throw new Error('Whisper: ' + body.error.message);
-  return body.text;
-}
-
-/**
- * Вытащить метрику дневника из расшифрованной речи.
- * Возвращает { metricType, value, notes } или null.
- */
-function extractMetricFromText_(text) {
-  var prompt =
-    'Извлеки из текста запись дневника здоровья. Ответь ТОЛЬКО JSON без пояснений:\n' +
-    '{"metric_type":"sleep|food|workout|energy","value":"кратко","notes":"контекст или пустая строка"}\n' +
-    'Если запись не про сон/питание/тренировку/самочувствие — ответь {"metric_type":null}.\n\n' +
-    'Текст: ' + text;
-  var raw = openAiChat_('gpt-4o-mini', [{ role: 'user', content: prompt }]);
-  try {
-    var parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
-    if (!parsed.metric_type) return null;
-    return { metricType: parsed.metric_type, value: String(parsed.value || ''), notes: String(parsed.notes || '') };
-  } catch (e) {
-    return null;
-  }
 }
 
 /** Сохранить фото в папку Google Drive и вернуть ссылку. */

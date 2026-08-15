@@ -28,8 +28,8 @@ function tgCall_(method, payload) {
 
 /**
  * Экранировать текст, который пришёл от человека или от модели, перед вставкой
- * в сообщение с parse_mode: HTML. Без этого «гемоглобин <120» в личном правиле
- * или расшифровка голоса со знаком «<» ломает разбор на стороне Telegram —
+ * в сообщение с parse_mode: HTML. Без этого символ «<» в свободном тексте
+ * (например, описании особенности) ломает разбор на стороне Telegram —
  * сообщение просто не доходит, и бот выглядит зависшим.
  */
 function esc_(text) {
@@ -59,22 +59,17 @@ function downloadTelegramFile_(fileId) {
 
 // ---------- Клавиатуры ----------
 
-var MENU_LOG = '📝 Дневник';
 var MENU_ANALYSIS = '📊 Анализы';
 var MENU_EXAM = '🩺 Обследования';
 var MENU_REPORT = '📈 Отчёт';
-var MENU_ADD_RULE = '🧠 Моё правило';
 var MENU_FEATURE = '🧬 Особенности';
-var MENU_MEDS = '💊 Лекарства';
 
-/** Постоянное меню внизу чата — то же, что было в Python-версии. */
+/** Постоянное меню внизу чата. */
 function mainMenuKeyboard() {
   return {
     keyboard: [
-      [MENU_LOG, MENU_ANALYSIS],
-      [MENU_EXAM, MENU_REPORT],
-      [MENU_ADD_RULE, MENU_FEATURE],
-      [MENU_MEDS]
+      [MENU_ANALYSIS, MENU_EXAM],
+      [MENU_REPORT, MENU_FEATURE]
     ],
     resize_keyboard: true
   };
@@ -86,17 +81,6 @@ function membersKeyboard(members) {
     inline_keyboard: members.map(function (m) {
       return [{ text: m.name, callback_data: 'member:' + m.id }];
     })
-  };
-}
-
-/** Выбор метрики для дневника (без «Энергия» — убрана по просьбе пользователя). */
-function metricsKeyboard() {
-  return {
-    inline_keyboard: [
-      [{ text: '😴 Сон', callback_data: 'metric:sleep' }],
-      [{ text: '🍽️ Питание', callback_data: 'metric:food' }],
-      [{ text: '🏋️ Тренировка', callback_data: 'metric:workout' }]
-    ]
   };
 }
 
@@ -129,7 +113,7 @@ function featureTypesKeyboard() {
   };
 }
 
-/** Подтверждение расшифровки голоса/фото перед сохранением. */
+/** Подтверждение того, что бот увидел на фото, перед сохранением. */
 function confirmKeyboard() {
   return {
     inline_keyboard: [
@@ -138,13 +122,6 @@ function confirmKeyboard() {
     ]
   };
 }
-
-var METRIC_LABELS = {
-  energy: '⚡ Энергия',
-  sleep: '😴 Сон',
-  food: '🍽️ Питание',
-  workout: '🏋️ Тренировка'
-};
 
 // ---------- Разбор апдейта ----------
 
@@ -159,7 +136,6 @@ function parseUpdate_(update) {
       chatId: msg.chat.id,
       userId: msg.from.id,
       text: msg.text != null ? msg.text.trim() : null,
-      voiceFileId: msg.voice ? msg.voice.file_id : null,
       photoFileId: msg.photo ? msg.photo[msg.photo.length - 1].file_id : null,
       callbackData: null,
       callbackQueryId: null
@@ -170,7 +146,6 @@ function parseUpdate_(update) {
       chatId: update.callback_query.message.chat.id,
       userId: update.callback_query.from.id,
       text: null,
-      voiceFileId: null,
       photoFileId: null,
       callbackData: update.callback_query.data,
       callbackQueryId: update.callback_query.id

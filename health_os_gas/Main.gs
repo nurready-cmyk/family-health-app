@@ -40,7 +40,6 @@ function handleUpdate_(update) {
     return;
   }
 
-  if (u.voiceFileId) { handleVoice_(u, access); return; }
   if (u.photoFileId) { handlePhoto_(u, access); return; }
 
   // Начало сценария по кнопке меню или команде.
@@ -125,13 +124,10 @@ function tryBootstrapAdmin_(u) {
 function matchStarter_(text) {
   if (!text) return null;
   var map = {};
-  map[MENU_LOG] = startLog_;         map['/log'] = startLog_;
   map[MENU_ANALYSIS] = startAnalysis_; map['/analysis'] = startAnalysis_;
   map[MENU_EXAM] = startExam_;       map['/exam'] = startExam_;
   map[MENU_REPORT] = startReport_;   map['/report'] = startReport_;
-  map[MENU_ADD_RULE] = startAddRule_; map['/add_rule'] = startAddRule_;
   map[MENU_FEATURE] = startFeature_;  map['/feature'] = startFeature_;
-  map[MENU_MEDS] = startMed_;         map['/med'] = startMed_;
   map['/add_family_member'] = startAddFamilyMember_;
   return map[text] || null;
 }
@@ -184,12 +180,6 @@ function parseFlexibleDate_(text) {
 
 // ---------- Старт сценариев ----------
 
-function startLog_(u, access) {
-  askMemberOrProceed_(u, access, 'log', 'log:metric', function (uu) {
-    sendMessage(uu.chatId, 'Какая метрика?', metricsKeyboard());
-  });
-}
-
 function startAnalysis_(u, access) {
   askMemberOrProceed_(u, access, 'analysis', 'analysis:date', promptDate_);
 }
@@ -198,23 +188,9 @@ function startExam_(u, access) {
   askMemberOrProceed_(u, access, 'exam', 'exam:date', promptDate_);
 }
 
-function startAddRule_(u, access) {
-  askMemberOrProceed_(u, access, 'rule', 'rule:text', function (uu) {
-    sendMessage(uu.chatId,
-      'Опишите личное правило одним сообщением. Обязательно укажите название показателя — тогда бот вспомнит правило, когда этот показатель отклонится.\n' +
-      'Например: <i>если гемоглобин низкий, мне помогает гранат и меньше кофе</i>');
-  });
-}
-
 function startFeature_(u, access) {
   askMemberOrProceed_(u, access, 'feature', 'feature:type', function (uu) {
     sendMessage(uu.chatId, 'Что это за особенность?', featureTypesKeyboard());
-  });
-}
-
-function startMed_(u, access) {
-  askMemberOrProceed_(u, access, 'med', 'med:drug', function (uu) {
-    sendMessage(uu.chatId, 'Какой препарат?');
   });
 }
 
@@ -251,13 +227,7 @@ function continueFlow_(u, access, session) {
       return;
     }
     var flow = data.flow;
-    if (flow === 'log') {
-      setSession_(u.chatId, 'log:metric', data);
-      sendMessage(u.chatId, 'Какая метрика?', metricsKeyboard());
-    } else if (flow === 'rule') {
-      setSession_(u.chatId, 'rule:text', data);
-      sendMessage(u.chatId, 'Опишите личное правило одним сообщением (с названием показателя).');
-    } else if (flow === 'report') {
+    if (flow === 'report') {
       clearSession_(u.chatId);
       sendReport_(u, access, data.memberId);
     } else if (flow === 'quick') {
@@ -266,12 +236,6 @@ function continueFlow_(u, access, session) {
     } else if (flow === 'feature') {
       setSession_(u.chatId, 'feature:type', data);
       sendMessage(u.chatId, 'Что это за особенность?', featureTypesKeyboard());
-    } else if (flow === 'med') {
-      setSession_(u.chatId, 'med:drug', data);
-      sendMessage(u.chatId, 'Какой препарат?');
-    } else if (flow === 'voice') {
-      setSession_(u.chatId, 'voice:confirm', data);
-      sendVoiceConfirm_(u, data);
     } else if (flow === 'photo') {
       setSession_(u.chatId, 'photo:confirm', data);
       sendPhotoConfirm_(u, data);
@@ -325,32 +289,6 @@ function continueFlow_(u, access, session) {
       var added = addFamilyMember_(data.name, data.gender, y);
       clearSession_(u.chatId);
       sendMessage(u.chatId, '✅ Добавлен: ' + esc_(added.name), mainMenuKeyboard());
-      return;
-
-    // --- Дневник ---
-    case 'log:metric':
-      if (!u.callbackData || u.callbackData.indexOf('metric:') !== 0) {
-        sendMessage(u.chatId, 'Выберите метрику кнопкой.', metricsKeyboard());
-        return;
-      }
-      data.metricType = u.callbackData.split(':')[1];
-      setSession_(u.chatId, 'log:value', data);
-      sendMessage(u.chatId, METRIC_LABELS[data.metricType] + ' — что записать?');
-      return;
-    case 'log:value':
-      if (!u.text) { sendMessage(u.chatId, 'Напишите значение текстом.'); return; }
-      data.value = u.text;
-      setSession_(u.chatId, 'log:notes', data);
-      sendMessage(u.chatId,
-        'Записал: ' + METRIC_LABELS[data.metricType] + ' = ' + esc_(data.value) + '\n\n' +
-        'Заметка — необязательный комментарий с контекстом (например «после хорошего сна»). Если добавить нечего, отправьте «-».');
-      return;
-    case 'log:notes':
-      if (!u.text) { sendMessage(u.chatId, 'Напишите заметку текстом или отправьте «-».'); return; }
-      var notes = u.text === '-' ? '' : u.text;
-      addLog_(today_(), data.memberId, data.metricType, data.value, notes);
-      clearSession_(u.chatId);
-      sendMessage(u.chatId, '✅ Записано в дневник.', mainMenuKeyboard());
       return;
 
     // --- Анализы ---
@@ -429,43 +367,6 @@ function continueFlow_(u, access, session) {
       sendMessage(u.chatId,
         '🧬 Записал в «Особенности». Это будет видно и в отчёте, и при выгрузке базы в ИИ.',
         mainMenuKeyboard());
-      return;
-
-    // --- Лекарства ---
-    case 'med:drug':
-      if (!u.text) { sendMessage(u.chatId, 'Напишите название препарата текстом.'); return; }
-      data.drug = u.text;
-      setSession_(u.chatId, 'med:dosage', data);
-      sendMessage(u.chatId, 'Доза и как часто принимать? Например: <i>2.5 мг, раз в день утром</i>');
-      return;
-    case 'med:dosage':
-      if (!u.text) { sendMessage(u.chatId, 'Напишите дозу текстом.'); return; }
-      addMedication_(data.memberId, data.drug, u.text, today_());
-      clearSession_(u.chatId);
-      sendMessage(u.chatId,
-        '💊 Записал: ' + esc_(data.drug) + ' — ' + esc_(u.text) + '.\n' +
-        'Дату окончания или причину можно дописать прямо в таблице, в листе «Лекарства».',
-        mainMenuKeyboard());
-      return;
-
-    // --- Личное правило ---
-    case 'rule:text':
-      if (!u.text) { sendMessage(u.chatId, 'Напишите правило текстом.'); return; }
-      addKnowledgeRule_(data.memberId, u.text);
-      clearSession_(u.chatId);
-      sendMessage(u.chatId, '🧠 Правило сохранено. Оно всплывёт, когда упомянутый показатель отклонится от нормы.', mainMenuKeyboard());
-      return;
-
-    // --- Подтверждение голоса ---
-    case 'voice:confirm':
-      if (!u.callbackData) { sendMessage(u.chatId, 'Нажмите «Да» или «Отмена».', confirmKeyboard()); return; }
-      if (u.callbackData === 'confirm:yes') {
-        addLog_(today_(), data.memberId, data.metricType, data.value, data.notes || '');
-        sendMessage(u.chatId, '✅ Записано в дневник.', mainMenuKeyboard());
-      } else {
-        sendMessage(u.chatId, 'Отменено.', mainMenuKeyboard());
-      }
-      clearSession_(u.chatId);
       return;
 
     // --- Подтверждение фото ---
@@ -550,22 +451,11 @@ function sendReport_(u, access, memberId) {
 /** Личные правила впереди общих рекомендаций — как и в Python-версии. */
 function recommendationsBlock_(memberId, gender, abnormalKeys) {
   var block = '';
-  var meds = getActiveMedications_(memberId);
-  if (meds.length) {
-    block += '\n\n💊 Принимает сейчас:\n' + meds.map(function (m) {
-      return '• ' + esc_(m['Препарат']) + (m['Доза и приём'] ? ' — ' + esc_(m['Доза и приём']) : '');
-    }).join('\n');
-  }
   var features = getFeatures_(memberId);
   if (features.length) {
     block += '\n\n🧬 Особенности:\n' + features.map(function (f) {
       return '• ' + esc_(f['Тип']) + ': ' + esc_(f['Описание']);
     }).join('\n');
-  }
-  var personal = getMatchingPersonalRules_(memberId, abnormalKeys);
-  if (personal.length) {
-    block += '\n\n🧠 Из ваших личных заметок:\n' +
-      personal.map(function (r) { return '• ' + esc_(r['Правило']); }).join('\n');
   }
   var general = getActiveRecommendations_(getLatestValues_(memberId), gender);
   if (general.length) {
@@ -579,43 +469,7 @@ function recommendationsBlock_(memberId, gender, abnormalKeys) {
   return block;
 }
 
-// ---------- Голос и фото ----------
-
-function handleVoice_(u, access) {
-  sendMessage(u.chatId, '🎧 Слушаю голосовое...');
-  var text;
-  try {
-    text = transcribeVoice_(u.voiceFileId);
-  } catch (e) {
-    sendMessage(u.chatId, 'Не удалось расшифровать голос: ' + esc_(e.message));
-    return;
-  }
-
-  var metric = extractMetricFromText_(text);
-  if (!metric) {
-    sendMessage(u.chatId, 'Расшифровал:\n<i>' + esc_(text) + '</i>\n\nНо не понял, что записать. Попробуйте кнопки меню.', mainMenuKeyboard());
-    return;
-  }
-
-  var data = { flow: 'voice', metricType: metric.metricType, value: metric.value, notes: metric.notes, transcript: text };
-
-  if (access.allowedMembers.length === 1) {
-    data.memberId = access.allowedMembers[0].id;
-    setSession_(u.chatId, 'voice:confirm', data);
-    sendVoiceConfirm_(u, data);
-  } else {
-    setSession_(u.chatId, 'voice:member', data);
-    sendMessage(u.chatId, 'Расшифровал:\n<i>' + esc_(text) + '</i>\n\nЗа кого записать?', membersKeyboard(access.allowedMembers));
-  }
-}
-
-function sendVoiceConfirm_(u, data) {
-  sendMessage(u.chatId,
-    'Расшифровал:\n<i>' + esc_(data.transcript) + '</i>\n\n' +
-    'Записать?\n' + METRIC_LABELS[data.metricType] + ': <b>' + esc_(data.value) + '</b>' +
-    (data.notes ? '\nЗаметка: ' + esc_(data.notes) : ''),
-    confirmKeyboard());
-}
+// ---------- Голос и фото// ---------- Фото ----------
 
 function handlePhoto_(u, access) {
   sendMessage(u.chatId, '🔍 Смотрю фото...');

@@ -38,7 +38,7 @@ function refreshEntrySheets() {
 
 /** Забыть всё, что бот держит в кэше. Страховка, если что-то разошлось. */
 function dropAllCaches() {
-  [SHEET_FAMILY, SHEET_USERS, SHEET_CATALOG, SHEET_PERSONAL_NORMS, SHEET_KB, SHEET_FEATURES, SHEET_MEDS]
+  [SHEET_FAMILY, SHEET_USERS, SHEET_CATALOG, SHEET_PERSONAL_NORMS, SHEET_FEATURES]
     .forEach(dropSheetCache_);
   SpreadsheetApp.getActive().toast('Кэш сброшен — бот перечитает листы.', 'Health OS', 5);
 }
@@ -221,17 +221,6 @@ function applyValidations_() {
     features.setColumnWidth(1, 120);
     features.setColumnWidth(2, 220);
     features.setColumnWidth(3, 560);
-  }
-
-  // Лекарства: кто — из списка семьи, остальное — свободный текст.
-  var meds = ss_().getSheetByName(SHEET_MEDS);
-  if (meds) {
-    meds.getRange(2, 1, meds.getMaxRows() - 1, 1).setDataValidation(members);
-    meds.setFrozenRows(1);
-    meds.getRange(1, 1, 1, 7).setFontWeight('bold').setBackground('#e8f0fe');
-    meds.setColumnWidth(1, 120);
-    meds.setColumnWidth(2, 220);
-    meds.setColumnWidth(3, 260);
   }
 
   var personal = ss_().getSheetByName(SHEET_PERSONAL_NORMS);

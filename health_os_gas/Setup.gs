@@ -13,7 +13,7 @@ function setup() {
     Logger.log('Служебный лист уже существует.');
   }
 
-  var required = [SHEET_FAMILY, SHEET_USERS, SHEET_LOGS, SHEET_MEDICAL, SHEET_KB, SHEET_ANALYSES];
+  var required = [SHEET_FAMILY, SHEET_USERS, SHEET_MEDICAL, SHEET_ANALYSES];
   var missing = required.filter(function (name) { return !ss_().getSheetByName(name); });
   if (missing.length) {
     Logger.log('ВНИМАНИЕ: не найдены листы: ' + missing.join(', '));

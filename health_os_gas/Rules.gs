@@ -102,15 +102,3 @@ function getActiveRecommendations_(values, gender) {
     try { return rule.check(values, gender); } catch (e) { return false; }
   });
 }
-
-/** Личные правила, где упомянут отклонившийся показатель (аналог core/knowledge_base.py). */
-function getMatchingPersonalRules_(memberId, abnormalKeys) {
-  if (!abnormalKeys.length) return [];
-  var rules = getKnowledgeRules_(memberId);
-  if (!rules.length) return [];
-  var labels = abnormalKeys.map(function (k) { return indicatorLabel_(k).toLowerCase(); });
-  return rules.filter(function (rule) {
-    var text = String(rule['Правило']).toLowerCase();
-    return labels.some(function (label) { return text.indexOf(label) !== -1; });
-  });
-}

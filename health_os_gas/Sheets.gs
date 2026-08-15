@@ -6,9 +6,7 @@
 // программист, и ему не должно требоваться переводить family_member_id.
 var SHEET_FAMILY = 'Семья';
 var SHEET_USERS = 'Доступ';
-var SHEET_LOGS = 'Дневник';
 var SHEET_MEDICAL = 'Обследования';
-var SHEET_KB = 'Мои правила';
 var SHEET_ANALYSES = 'Анализы';
 var SHEET_CATALOG = 'Справочник анализов';
 var SHEET_PERSONAL_NORMS = 'Личные нормы';
@@ -238,13 +236,6 @@ function addFamilyMember_(name, gender, birthYear) {
 
 // ---------- Записи данных ----------
 
-function addLog_(entryDate, memberId, metricType, value, notes) {
-  appendRow_(SHEET_LOGS, {
-    'Дата': entryDate, 'Кто': memberId, 'Что': metricType,
-    'Запись': value, 'Заметка': notes, 'Служебный id': newId_()
-  });
-}
-
 function addMedicalRecord_(recordDate, memberId, eventType, summary, documentUrl) {
   appendRow_(SHEET_MEDICAL, {
     'Дата': recordDate, 'Кто': memberId, 'Что это было': eventType,
@@ -271,20 +262,7 @@ function addFeature_(memberId, type, description) {
   dropSheetCache_(SHEET_FEATURES);
 }
 
-function addKnowledgeRule_(memberId, ruleText) {
-  appendRow_(SHEET_KB, {
-    'Кто': memberId, 'Правило': ruleText, 'Важность': 0, 'Служебный id': newId_()
-  });
-  dropSheetCache_(SHEET_KB);
-}
-
-function getKnowledgeRules_(memberId) {
-  return cachedRows_(SHEET_KB)
-    .filter(function (r) { return String(r['Кто']) === memberId; })
-    .sort(function (a, b) { return (Number(b['Важность']) || 0) - (Number(a['Важность']) || 0); });
-}
-
-// ---------- Анализы: длинный список ----------
+// ---------- Анализы: длинный список// ---------- Анализы: длинный список ----------
 // Раньше лист был широким (строка = бланк, колонки = показатели). После
 // живого использования выяснилось, что 30-40 колонок неудобно листать, а
 // каждый новый показатель — это новая колонка чуть дальше вправо. Длинный
@@ -437,34 +415,7 @@ function getLatestLabRanges_(memberId) {
   return ranges;
 }
 
-// ---------- Лекарства ----------
-// Приём препаратов меняет интерпретацию анализов (например, разжижающие
-// кровь лекарства и МНО), поэтому это отдельный лист, а не текст в
-// «Особенности». «По какую дату» пусто — значит, принимает сейчас.
-
-var SHEET_MEDS = 'Лекарства';
-
-function getMedications_(memberId) {
-  return cachedRows_(SHEET_MEDS).filter(function (r) {
-    return String(r['Кто']).trim() === memberId;
-  });
-}
-
-function getActiveMedications_(memberId) {
-  return getMedications_(memberId).filter(function (r) {
-    return !String(r['По какую дату'] || '').trim();
-  });
-}
-
-function addMedication_(memberId, drug, dosage, sinceDate) {
-  appendRow_(SHEET_MEDS, {
-    'Кто': memberId, 'Препарат': drug, 'Доза и приём': dosage,
-    'С какой даты': sinceDate, 'По какую дату': '', 'Причина': '', 'Служебный id': newId_()
-  });
-  dropSheetCache_(SHEET_MEDS);
-}
-
-// ---------- Sessions// ---------- Sessions (состояние диалога) ----------
+// ---------- Sessions// ---------- Sessions// ---------- Sessions (состояние диалога) ----------
 // Apps Script не хранит состояние между запросами — каждый шаг диалога
 // записывается в лист Sessions (аналог MemoryStorage в aiogram, но
 // переживает даже перезапуск, в отличие от Python-версии).
