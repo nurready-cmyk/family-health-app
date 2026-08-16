@@ -150,6 +150,7 @@ function reportCountKeyboard() {
   return {
     inline_keyboard: [[
       { text: '1', callback_data: 'repcount:1' },
+      { text: '2', callback_data: 'repcount:2' },
       { text: '3', callback_data: 'repcount:3' },
       { text: '5', callback_data: 'repcount:5' },
       { text: 'Все', callback_data: 'repcount:all' }

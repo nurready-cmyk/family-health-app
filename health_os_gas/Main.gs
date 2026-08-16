@@ -531,7 +531,7 @@ function continueFlow_(u, access, session) {
         data.indicators = personAllIndicators_(data.memberId);
         delete data.group;
         setSession_(u.chatId, 'report:indicator', data);
-        sendMessage(u.chatId, 'Какой показатель?', reportIndicatorsKeyboard(data.indicators, false));
+        sendMessage(u.chatId, 'Какой показатель? Можно кнопкой или просто напишите название.', reportIndicatorsKeyboard(data.indicators, false));
         return;
       }
       sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportModeKeyboard());
@@ -543,23 +543,41 @@ function continueFlow_(u, access, session) {
       data.group = pickedGroup;
       data.indicators = personIndicatorsInGroup_(data.memberId, pickedGroup);
       setSession_(u.chatId, 'report:indicator', data);
-      sendMessage(u.chatId, pickedGroup + ' — что показать?', reportIndicatorsKeyboard(data.indicators, true));
+      sendMessage(u.chatId, pickedGroup + ' — что показать? Можно кнопкой или написать название.', reportIndicatorsKeyboard(data.indicators, true));
       return;
     case 'report:indicator':
       var indKeyboard = reportIndicatorsKeyboard(data.indicators, !!data.group);
-      if (!u.callbackData) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', indKeyboard); return; }
       if (u.callbackData === 'repwhole:0' && data.group) {
         clearSession_(u.chatId);
         sendGroupSnapshot_(u, access, data.memberId, data.group,
           data.indicators.map(function (it) { return it.key; }));
         return;
       }
-      if (u.callbackData.indexOf('repind:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', indKeyboard); return; }
-      var pickedIndicator = data.indicators[Number(u.callbackData.split(':')[1])];
-      if (!pickedIndicator) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', indKeyboard); return; }
-      data.reportKey = pickedIndicator.key;
-      setSession_(u.chatId, 'report:count', data);
-      sendMessage(u.chatId, pickedIndicator.label + ' — сколько последних показать?', reportCountKeyboard());
+      if (u.callbackData && u.callbackData.indexOf('repind:') === 0) {
+        var pickedIndicator = data.indicators[Number(u.callbackData.split(':')[1])];
+        if (!pickedIndicator) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', indKeyboard); return; }
+        data.reportKey = pickedIndicator.key;
+        setSession_(u.chatId, 'report:count', data);
+        sendMessage(u.chatId, pickedIndicator.label + ' — сколько последних показать?', reportCountKeyboard());
+        return;
+      }
+      // Список растёт, и когда-то в нём проще написать название, чем листать
+      // кнопки — «МНО» сразу ведёт к выбору количества, минуя список.
+      if (u.text) {
+        refreshCatalog_(data.memberId);
+        var typedKey = containsIndicatorKey_(u.text);
+        var typedLabel = typedKey && distinctCodesForMember_(data.memberId).indexOf(typedKey) !== -1
+          ? indicatorLabel_(typedKey) : null;
+        if (typedLabel) {
+          data.reportKey = typedKey;
+          setSession_(u.chatId, 'report:count', data);
+          sendMessage(u.chatId, typedLabel + ' — сколько последних показать?', reportCountKeyboard());
+          return;
+        }
+        sendMessage(u.chatId, 'Не нашёл такой показатель у ' + esc_(getMemberById_(access, data.memberId).name) + '. Выберите кнопкой или напишите название точнее.', indKeyboard);
+        return;
+      }
+      sendMessage(u.chatId, 'Выберите кнопкой ниже или напишите название показателя.', indKeyboard);
       return;
     case 'report:count':
       if (!u.callbackData || u.callbackData.indexOf('repcount:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportCountKeyboard()); return; }

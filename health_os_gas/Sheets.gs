@@ -511,22 +511,27 @@ function personActiveGroups_(memberId) {
     var g = groupOf[code] || 'Прочее';
     if (!seen[g]) { seen[g] = true; groups.push(g); }
   });
+  groups.sort(function (a, b) { return a.localeCompare(b, 'ru'); });
   return groups;
 }
 
 /** Все показатели человека, без деления на группы: [{key, label}]. */
 function personAllIndicators_(memberId) {
-  return distinctCodesForMember_(memberId).map(function (code) {
+  var items = distinctCodesForMember_(memberId).map(function (code) {
     return { key: code, label: indicatorLabel_(code) };
   });
+  items.sort(function (a, b) { return a.label.localeCompare(b.label, 'ru'); });
+  return items;
 }
 
 /** Показатели этой группы, по которым у человека есть данные: [{key, label}]. */
 function personIndicatorsInGroup_(memberId, group) {
   var groupOf = codeToGroup_();
-  return distinctCodesForMember_(memberId)
+  var items = distinctCodesForMember_(memberId)
     .filter(function (code) { return (groupOf[code] || 'Прочее') === group; })
     .map(function (code) { return { key: code, label: indicatorLabel_(code) }; });
+  items.sort(function (a, b) { return a.label.localeCompare(b.label, 'ru'); });
+  return items;
 }
 
 /** Название обследования → его группа, по справочнику. */
