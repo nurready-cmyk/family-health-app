@@ -475,6 +475,53 @@ function analysisHistory_(memberId, code, sinceDate) {
   return rows;
 }
 
+// ---------- Отчёт по кнопкам: группа → показатель → сколько последних ----------
+
+/** Коды показателей, по которым у человека есть хоть одно значение — в порядке появления в листе. */
+function distinctCodesForMember_(memberId) {
+  var sheet = analysesSheet_();
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+  var seen = {}, order = [];
+  values.slice(1).forEach(function (r) {
+    if (String(r[ANALYSES_COL_MEMBER - 1]).trim() !== memberId) return;
+    var code = String(r[ANALYSES_COL_CODE - 1]).trim();
+    var value = r[ANALYSES_COL_VALUE - 1];
+    if (!code || value === '' || value == null) return;
+    if (!seen[code]) { seen[code] = true; order.push(code); }
+  });
+  return order;
+}
+
+/** Код показателя → его группа, по справочнику. Без группы — «Прочее». */
+function codeToGroup_() {
+  var map = {};
+  cachedRows_(SHEET_CATALOG).forEach(function (row) {
+    var code = String(row['Код'] || '').trim();
+    if (code) map[code] = String(row['Группа'] || '').trim() || 'Прочее';
+  });
+  return map;
+}
+
+/** Группы (по справочнику), по которым у человека есть хоть один результат. */
+function personActiveGroups_(memberId) {
+  var groupOf = codeToGroup_();
+  var seen = {}, groups = [];
+  distinctCodesForMember_(memberId).forEach(function (code) {
+    var g = groupOf[code] || 'Прочее';
+    if (!seen[g]) { seen[g] = true; groups.push(g); }
+  });
+  return groups;
+}
+
+/** Показатели этой группы, по которым у человека есть данные: [{key, label}]. */
+function personIndicatorsInGroup_(memberId, group) {
+  var groupOf = codeToGroup_();
+  return distinctCodesForMember_(memberId)
+    .filter(function (code) { return (groupOf[code] || 'Прочее') === group; })
+    .map(function (code) { return { key: code, label: indicatorLabel_(code) }; });
+}
+
 /** Название обследования → его группа, по справочнику. */
 function examNameToGroup_() {
   var map = {};

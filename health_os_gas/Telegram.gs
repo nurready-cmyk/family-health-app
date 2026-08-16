@@ -113,6 +113,37 @@ function featureTypesKeyboard() {
   };
 }
 
+// ---------- Отчёт: группа → показатель → сколько последних ----------
+// Список групп/показателей у каждого человека свой, поэтому кнопки кодируют
+// не название (может быть длинным и с двоеточиями), а индекс — сам список
+// лежит в session.data и подставляется по этому индексу при следующем шаге.
+
+/** Группы, по которым у человека есть данные. callback_data: "repgroup:<индекс>" */
+function reportGroupsKeyboard(groups) {
+  var rows = groups.map(function (g, i) { return [{ text: g, callback_data: 'repgroup:' + i }]; });
+  rows.push([{ text: '📋 Всё сразу', callback_data: 'repall:0' }]);
+  return { inline_keyboard: rows };
+}
+
+/** Показатели внутри группы + вариант «вся группа целиком». */
+function reportIndicatorsKeyboard(items) {
+  var rows = items.map(function (it, i) { return [{ text: it.label, callback_data: 'repind:' + i }]; });
+  rows.push([{ text: '📦 Вся группа (последние значения)', callback_data: 'repwhole:0' }]);
+  return { inline_keyboard: rows };
+}
+
+/** Сколько последних результатов показать. callback_data: "repcount:1|3|5|all" */
+function reportCountKeyboard() {
+  return {
+    inline_keyboard: [[
+      { text: '1', callback_data: 'repcount:1' },
+      { text: '3', callback_data: 'repcount:3' },
+      { text: '5', callback_data: 'repcount:5' },
+      { text: 'Все', callback_data: 'repcount:all' }
+    ]]
+  };
+}
+
 /** Подтверждение того, что бот увидел на фото, перед сохранением. */
 function confirmKeyboard() {
   return {

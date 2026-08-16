@@ -120,6 +120,16 @@ function pickMemberFromText_(access, text) {
 var HISTORY_ROWS_LIMIT = 40;
 var EXAM_ROWS_LIMIT = 20;
 
+/** «Дата — значение единица [⬇️/⬆️]» на каждую строку истории показателя. */
+function formatIndicatorHistoryLines_(rows, key, gender) {
+  return rows.map(function (r) {
+    var labRange = (r.labMin != null && r.labMax != null) ? [r.labMin, r.labMax] : null;
+    var check = checkNorm_(key, r.value, gender, labRange);
+    var mark = check && check.status === 'low' ? ' ⬇️' : (check && check.status === 'high' ? ' ⬆️' : '');
+    return '• ' + r.date + ' — <b>' + r.value + '</b> ' + esc_(indicatorUnit_(key)) + mark;
+  });
+}
+
 /**
  * Вопрос про историю показателя: «МНО за год», «гемоглобин». Без имени и
  * без единственного члена семьи не подхватываем — гадать, о ком спросили,
@@ -150,12 +160,7 @@ function tryAnalysisQuery_(u, access) {
   }
 
   var shown = rows.length > HISTORY_ROWS_LIMIT ? rows.slice(-HISTORY_ROWS_LIMIT) : rows;
-  var lines = shown.map(function (r) {
-    var labRange = (r.labMin != null && r.labMax != null) ? [r.labMin, r.labMax] : null;
-    var check = checkNorm_(key, r.value, member.gender, labRange);
-    var mark = check && check.status === 'low' ? ' ⬇️' : (check && check.status === 'high' ? ' ⬆️' : '');
-    return '• ' + r.date + ' — <b>' + r.value + '</b> ' + esc_(indicatorUnit_(key)) + mark;
-  });
+  var lines = formatIndicatorHistoryLines_(shown, key, member.gender);
 
   var head = esc_(indicatorLabel_(key)) + ' — ' + esc_(member.name) + periodNote + ':\n';
   if (rows.length > shown.length) head += '(показаны последние ' + shown.length + ' из ' + rows.length + ')\n';
@@ -280,11 +285,68 @@ function startFeature_(u, access) {
   });
 }
 
+/**
+ * Отчёт — не сразу всё подряд, а по шагам: группа показателей → конкретный
+ * показатель (или вся группа целиком) → сколько последних результатов.
+ * «Всё сразу» на первом шаге ведёт себя как раньше — полный список.
+ */
 function startReport_(u, access) {
-  askMemberOrProceed_(u, access, 'report', 'report:go', function (uu, data) {
-    sendReport_(uu, resolveAccess_(uu.userId), data.memberId);
-    clearSession_(uu.chatId);
+  askMemberOrProceed_(u, access, 'report', 'report:group', function (uu, data) {
+    sendReportGroupMenu_(uu, access, data);
   });
+}
+
+function sendReportGroupMenu_(u, access, data) {
+  var member = getMemberById_(access, data.memberId);
+  refreshCatalog_(data.memberId);
+  var groups = personActiveGroups_(data.memberId);
+  if (!groups.length) {
+    sendMessage(u.chatId, 'Нет сохранённых анализов у ' + esc_(member.name) + '. Внесите через кнопку 📊 Анализы.', mainMenuKeyboard());
+    clearSession_(u.chatId);
+    return;
+  }
+  data.groups = groups;
+  setSession_(u.chatId, 'report:group', data);
+  sendMessage(u.chatId, 'Какая группа показателей — ' + esc_(member.name) + '?', reportGroupsKeyboard(groups));
+}
+
+/** Последние значения по выбранным ключам — как sendReport_, но по подмножеству. */
+function sendGroupSnapshot_(u, access, memberId, groupLabel, keys) {
+  var member = getMemberById_(access, memberId);
+  refreshCatalog_(memberId);
+  var latest = getLatestValues_(memberId);
+  var labRanges = getLatestLabRanges_(memberId);
+
+  var lines = keys.map(function (key) {
+    var raw = latest[key];
+    if (raw == null) return null;
+    var value = parseFloat(String(raw).replace(',', '.'));
+    if (isNaN(value)) return null;
+    var check = checkNorm_(key, value, member.gender, labRanges[key]);
+    var status = check ? ({ normal: '✅ норма', low: '⬇️ ниже нормы', high: '⬆️ выше нормы' })[check.status] : '';
+    return '• ' + esc_(indicatorLabel_(key)) + ': <b>' + value + '</b> ' + esc_(indicatorUnit_(key)) + (status ? ' — ' + status : '');
+  }).filter(function (line) { return line; });
+
+  var text = '📦 ' + esc_(groupLabel) + ' — ' + esc_(member.name) + ':\n' + lines.join('\n');
+  sendMessage(u.chatId, text, mainMenuKeyboard());
+}
+
+/** Последние `count` результатов одного показателя. count === 'all' — вся история. */
+function sendIndicatorHistory_(u, access, memberId, key, count) {
+  var member = getMemberById_(access, memberId);
+  refreshCatalog_(memberId);
+  var rows = analysisHistory_(memberId, key, null);
+  if (!rows.length) {
+    sendMessage(u.chatId, 'Записей «' + esc_(indicatorLabel_(key)) + '» у ' + esc_(member.name) + ' не нашёл.', mainMenuKeyboard());
+    return;
+  }
+
+  var shown = count === 'all' ? rows : rows.slice(-Number(count));
+  var lines = formatIndicatorHistoryLines_(shown, key, member.gender);
+
+  var head = esc_(indicatorLabel_(key)) + ' — ' + esc_(member.name) +
+    ' (последние ' + shown.length + (count === 'all' ? '' : ' из ' + rows.length) + '):\n';
+  sendMessage(u.chatId, head + lines.join('\n'), mainMenuKeyboard());
 }
 
 function startAddFamilyMember_(u, access) {
@@ -314,8 +376,7 @@ function continueFlow_(u, access, session) {
     }
     var flow = data.flow;
     if (flow === 'report') {
-      clearSession_(u.chatId);
-      sendReport_(u, access, data.memberId);
+      sendReportGroupMenu_(u, access, data);
     } else if (flow === 'quick') {
       clearSession_(u.chatId);
       recordAnalysis_(u, access, data.memberId, data.indicators, data.date, data.unknown);
@@ -453,6 +514,44 @@ function continueFlow_(u, access, session) {
       sendMessage(u.chatId,
         '🧬 Записал в «Особенности». Это будет видно и в отчёте, и при выгрузке базы в ИИ.',
         mainMenuKeyboard());
+      return;
+
+    // --- Отчёт: группа → показатель → сколько последних ---
+    case 'report:group':
+      if (!u.callbackData) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportGroupsKeyboard(data.groups)); return; }
+      if (u.callbackData === 'repall:0') {
+        clearSession_(u.chatId);
+        sendReport_(u, access, data.memberId);
+        return;
+      }
+      if (u.callbackData.indexOf('repgroup:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportGroupsKeyboard(data.groups)); return; }
+      var pickedGroup = data.groups[Number(u.callbackData.split(':')[1])];
+      if (!pickedGroup) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportGroupsKeyboard(data.groups)); return; }
+      data.group = pickedGroup;
+      data.indicators = personIndicatorsInGroup_(data.memberId, pickedGroup);
+      setSession_(u.chatId, 'report:indicator', data);
+      sendMessage(u.chatId, pickedGroup + ' — что показать?', reportIndicatorsKeyboard(data.indicators));
+      return;
+    case 'report:indicator':
+      if (!u.callbackData) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportIndicatorsKeyboard(data.indicators)); return; }
+      if (u.callbackData === 'repwhole:0') {
+        clearSession_(u.chatId);
+        sendGroupSnapshot_(u, access, data.memberId, data.group,
+          data.indicators.map(function (it) { return it.key; }));
+        return;
+      }
+      if (u.callbackData.indexOf('repind:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportIndicatorsKeyboard(data.indicators)); return; }
+      var pickedIndicator = data.indicators[Number(u.callbackData.split(':')[1])];
+      if (!pickedIndicator) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportIndicatorsKeyboard(data.indicators)); return; }
+      data.reportKey = pickedIndicator.key;
+      setSession_(u.chatId, 'report:count', data);
+      sendMessage(u.chatId, pickedIndicator.label + ' — сколько последних показать?', reportCountKeyboard());
+      return;
+    case 'report:count':
+      if (!u.callbackData || u.callbackData.indexOf('repcount:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportCountKeyboard()); return; }
+      var count = u.callbackData.split(':')[1];
+      clearSession_(u.chatId);
+      sendIndicatorHistory_(u, access, data.memberId, data.reportKey, count);
       return;
 
     // --- Подтверждение фото ---
