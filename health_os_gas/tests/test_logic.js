@@ -55,6 +55,7 @@ eval(readFile(BASE + 'Norms.gs'));
 var mainSrc = readFile(BASE + 'Main.gs');
 var dateFn = mainSrc.match(/function parseFlexibleDate_[\s\S]*?\n}\n/)[0];
 eval(dateFn);
+eval(mainSrc.match(/function displayDate_[\s\S]*?\n}\n/)[0]);
 
 // Из Sheets.gs — normalizeDate_ (сортировка дат в широком листе Analyses).
 var sheetsSrc = readFile(BASE + 'Sheets.gs');
@@ -253,6 +254,12 @@ refreshCatalog_(null);
 eq('женский = женская норма', checkNorm_('hemoglobin', 125, 'женский').status, 'normal');
 eq('мужской = мужская норма', checkNorm_('hemoglobin', 125, 'мужской').status, 'low');
 eq('старое female ещё понимается', checkNorm_('hemoglobin', 125, 'female').status, 'normal');
+
+// ---------- displayDate_: как дату видит человек ----------
+eq('ISO → дд.мм.гггг', displayDate_('2026-08-04'), '04.08.2026');
+eq('однозначные день/месяц с нулём', displayDate_('2026-01-05'), '05.01.2026');
+eq('пусто остаётся пустым', displayDate_(''), '');
+eq('мусор возвращается как есть', displayDate_('не дата'), 'не дата');
 
 // ---------- normalizeDate_ ----------
 // Ключевой момент широкого листа: дату Google Sheets может отдать объектом

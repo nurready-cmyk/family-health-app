@@ -87,7 +87,7 @@ function tryQuickAnalysis_(u, access) {
     setSession_(u.chatId, 'quick:member',
       { flow: 'quick', date: entryDate, indicators: indicators, unknown: unknown });
     sendMessage(u.chatId,
-      'Понял показатели (' + entryDate + '). За кого записать?',
+      'Понял показатели (' + displayDate_(entryDate) + '). За кого записать?',
       membersKeyboard(access.allowedMembers));
     return true;
   }
@@ -126,7 +126,7 @@ function formatIndicatorHistoryLines_(rows, key, gender) {
     var labRange = (r.labMin != null && r.labMax != null) ? [r.labMin, r.labMax] : null;
     var check = checkNorm_(key, r.value, gender, labRange);
     var mark = check && check.status === 'low' ? ' ⬇️' : (check && check.status === 'high' ? ' ⬆️' : '');
-    return '• ' + r.date + ' — <b>' + r.value + '</b> ' + esc_(indicatorUnit_(key)) + mark;
+    return '• ' + displayDate_(r.date) + ' — <b>' + r.value + '</b> ' + esc_(indicatorUnit_(key)) + mark;
   });
 }
 
@@ -150,7 +150,7 @@ function tryAnalysisQuery_(u, access) {
 
   var member = getMemberById_(access, memberId);
   var rows = analysisHistory_(memberId, key, period.sinceDate);
-  var periodNote = period.sinceDate ? ' с ' + period.sinceDate : ' (вся история)';
+  var periodNote = period.sinceDate ? ' с ' + displayDate_(period.sinceDate) : ' (вся история)';
 
   if (!rows.length) {
     sendMessage(u.chatId,
@@ -183,7 +183,7 @@ function tryExamQuery_(u, access) {
 
   var member = getMemberById_(access, memberId);
   var rows = examHistory_(memberId, filter, period.sinceDate);
-  var periodNote = period.sinceDate ? ' с ' + period.sinceDate : ' (вся история)';
+  var periodNote = period.sinceDate ? ' с ' + displayDate_(period.sinceDate) : ' (вся история)';
 
   if (!rows.length) {
     sendMessage(u.chatId, 'Обследований у ' + esc_(member.name) + periodNote + ' не нашёл.', mainMenuKeyboard());
@@ -193,7 +193,7 @@ function tryExamQuery_(u, access) {
   var shown = rows.length > EXAM_ROWS_LIMIT ? rows.slice(-EXAM_ROWS_LIMIT) : rows;
   var lines = shown.map(function (r) {
     var summary = r.summary.length > 150 ? r.summary.slice(0, 150) + '…' : r.summary;
-    return '• ' + r.date + ' — <b>' + esc_(r.type) + '</b>' + (summary ? '\n  ' + esc_(summary) : '');
+    return '• ' + displayDate_(r.date) + ' — <b>' + esc_(r.type) + '</b>' + (summary ? '\n  ' + esc_(summary) : '');
   });
 
   var head = esc_(member.name) + ' — обследования' + periodNote + ':\n';
@@ -489,7 +489,7 @@ function continueFlow_(u, access, session) {
       if (!u.text) { sendMessage(u.chatId, 'Напишите заключение текстом.'); return; }
       addMedicalRecord_(data.date, data.memberId, data.eventType, u.text, '');
       clearSession_(u.chatId);
-      sendMessage(u.chatId, '✅ Записано (' + data.date + '): ' + esc_(data.eventType), mainMenuKeyboard());
+      sendMessage(u.chatId, '✅ Записано (' + displayDate_(data.date) + '): ' + esc_(data.eventType), mainMenuKeyboard());
       return;
 
     // --- Особенности организма ---
@@ -588,6 +588,16 @@ function today_() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
+/**
+ * 'yyyy-MM-dd' → 'дд.мм.гггг' — так даты принято писать у пользователя.
+ * Хранится и сравнивается дата по-прежнему в ISO (нужно для сортировки
+ * строкой), это только для текста, который видит человек.
+ */
+function displayDate_(iso) {
+  var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? (m[3] + '.' + m[2] + '.' + m[1]) : String(iso || '');
+}
+
 // ---------- Анализы: запись + рекомендации ----------
 
 function recordAnalysis_(u, access, memberId, indicators, entryDate, unknown) {
@@ -608,7 +618,7 @@ function recordAnalysis_(u, access, memberId, indicators, entryDate, unknown) {
     lines.push('• ' + esc_(indicatorLabel_(key)) + ': <b>' + esc_(value) + '</b> ' + esc_(indicatorUnit_(key)) + (status ? ' — ' + status : ''));
   });
 
-  var text = '📊 Записал (' + entryDate + '):\n' + lines.join('\n');
+  var text = '📊 Записал (' + displayDate_(entryDate) + '):\n' + lines.join('\n');
   if (unknown && unknown.length) {
     text += '\n\n⚠️ Не понял и не записал: <b>' + esc_(unknown.join(', ')) + '</b>.\n' +
       'Добавьте показатель в лист «Справочник анализов» — и он заработает, ' +
