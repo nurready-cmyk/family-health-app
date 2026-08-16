@@ -286,28 +286,25 @@ function startFeature_(u, access) {
 }
 
 /**
- * Отчёт — не сразу всё подряд, а по шагам: группа показателей → конкретный
- * показатель (или вся группа целиком) → сколько последних результатов.
- * «Всё сразу» на первом шаге ведёт себя как раньше — полный список.
+ * Отчёт — не сразу всё подряд. Первый шаг после выбора человека: по группе
+ * показателей, один конкретный показатель, или всё сразу (старое поведение).
  */
 function startReport_(u, access) {
-  askMemberOrProceed_(u, access, 'report', 'report:group', function (uu, data) {
-    sendReportGroupMenu_(uu, access, data);
+  askMemberOrProceed_(u, access, 'report', 'report:mode', function (uu, data) {
+    sendReportModeMenu_(uu, access, data);
   });
 }
 
-function sendReportGroupMenu_(u, access, data) {
+function sendReportModeMenu_(u, access, data) {
   var member = getMemberById_(access, data.memberId);
   refreshCatalog_(data.memberId);
-  var groups = personActiveGroups_(data.memberId);
-  if (!groups.length) {
+  if (!distinctCodesForMember_(data.memberId).length) {
     sendMessage(u.chatId, 'Нет сохранённых анализов у ' + esc_(member.name) + '. Внесите через кнопку 📊 Анализы.', mainMenuKeyboard());
     clearSession_(u.chatId);
     return;
   }
-  data.groups = groups;
-  setSession_(u.chatId, 'report:group', data);
-  sendMessage(u.chatId, 'Какая группа показателей — ' + esc_(member.name) + '?', reportGroupsKeyboard(groups));
+  setSession_(u.chatId, 'report:mode', data);
+  sendMessage(u.chatId, 'Как показать — ' + esc_(member.name) + '?', reportModeKeyboard());
 }
 
 /** Последние значения по выбранным ключам — как sendReport_, но по подмножеству. */
@@ -376,7 +373,7 @@ function continueFlow_(u, access, session) {
     }
     var flow = data.flow;
     if (flow === 'report') {
-      sendReportGroupMenu_(u, access, data);
+      sendReportModeMenu_(u, access, data);
     } else if (flow === 'quick') {
       clearSession_(u.chatId);
       recordAnalysis_(u, access, data.memberId, data.indicators, data.date, data.unknown);
@@ -516,33 +513,50 @@ function continueFlow_(u, access, session) {
         mainMenuKeyboard());
       return;
 
-    // --- Отчёт: группа → показатель → сколько последних ---
-    case 'report:group':
-      if (!u.callbackData) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportGroupsKeyboard(data.groups)); return; }
+    // --- Отчёт: режим (группа / один показатель / всё) → ... → сколько последних ---
+    case 'report:mode':
+      if (!u.callbackData) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportModeKeyboard()); return; }
       if (u.callbackData === 'repall:0') {
         clearSession_(u.chatId);
         sendReport_(u, access, data.memberId);
         return;
       }
-      if (u.callbackData.indexOf('repgroup:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportGroupsKeyboard(data.groups)); return; }
+      if (u.callbackData === 'repmode:group') {
+        data.groups = personActiveGroups_(data.memberId);
+        setSession_(u.chatId, 'report:group', data);
+        sendMessage(u.chatId, 'Какая группа показателей?', reportGroupsKeyboard(data.groups));
+        return;
+      }
+      if (u.callbackData === 'repmode:single') {
+        data.indicators = personAllIndicators_(data.memberId);
+        delete data.group;
+        setSession_(u.chatId, 'report:indicator', data);
+        sendMessage(u.chatId, 'Какой показатель?', reportIndicatorsKeyboard(data.indicators, false));
+        return;
+      }
+      sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportModeKeyboard());
+      return;
+    case 'report:group':
+      if (!u.callbackData || u.callbackData.indexOf('repgroup:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportGroupsKeyboard(data.groups)); return; }
       var pickedGroup = data.groups[Number(u.callbackData.split(':')[1])];
       if (!pickedGroup) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportGroupsKeyboard(data.groups)); return; }
       data.group = pickedGroup;
       data.indicators = personIndicatorsInGroup_(data.memberId, pickedGroup);
       setSession_(u.chatId, 'report:indicator', data);
-      sendMessage(u.chatId, pickedGroup + ' — что показать?', reportIndicatorsKeyboard(data.indicators));
+      sendMessage(u.chatId, pickedGroup + ' — что показать?', reportIndicatorsKeyboard(data.indicators, true));
       return;
     case 'report:indicator':
-      if (!u.callbackData) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportIndicatorsKeyboard(data.indicators)); return; }
-      if (u.callbackData === 'repwhole:0') {
+      var indKeyboard = reportIndicatorsKeyboard(data.indicators, !!data.group);
+      if (!u.callbackData) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', indKeyboard); return; }
+      if (u.callbackData === 'repwhole:0' && data.group) {
         clearSession_(u.chatId);
         sendGroupSnapshot_(u, access, data.memberId, data.group,
           data.indicators.map(function (it) { return it.key; }));
         return;
       }
-      if (u.callbackData.indexOf('repind:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportIndicatorsKeyboard(data.indicators)); return; }
+      if (u.callbackData.indexOf('repind:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', indKeyboard); return; }
       var pickedIndicator = data.indicators[Number(u.callbackData.split(':')[1])];
-      if (!pickedIndicator) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportIndicatorsKeyboard(data.indicators)); return; }
+      if (!pickedIndicator) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', indKeyboard); return; }
       data.reportKey = pickedIndicator.key;
       setSession_(u.chatId, 'report:count', data);
       sendMessage(u.chatId, pickedIndicator.label + ' — сколько последних показать?', reportCountKeyboard());

@@ -118,17 +118,30 @@ function featureTypesKeyboard() {
 // не название (может быть длинным и с двоеточиями), а индекс — сам список
 // лежит в session.data и подставляется по этому индексу при следующем шаге.
 
-/** Группы, по которым у человека есть данные. callback_data: "repgroup:<индекс>" */
-function reportGroupsKeyboard(groups) {
-  var rows = groups.map(function (g, i) { return [{ text: g, callback_data: 'repgroup:' + i }]; });
-  rows.push([{ text: '📋 Всё сразу', callback_data: 'repall:0' }]);
-  return { inline_keyboard: rows };
+/** Первый шаг после выбора человека: по группе, один показатель, или всё сразу. */
+function reportModeKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: '📁 По группе', callback_data: 'repmode:group' }],
+      [{ text: '🔹 Один показатель', callback_data: 'repmode:single' }],
+      [{ text: '📋 Всё сразу', callback_data: 'repall:0' }]
+    ]
+  };
 }
 
-/** Показатели внутри группы + вариант «вся группа целиком». */
-function reportIndicatorsKeyboard(items) {
+/** Группы, по которым у человека есть данные. callback_data: "repgroup:<индекс>" */
+function reportGroupsKeyboard(groups) {
+  return { inline_keyboard: groups.map(function (g, i) { return [{ text: g, callback_data: 'repgroup:' + i }]; }) };
+}
+
+/**
+ * Список показателей. includeWhole — добавлять ли «вся группа целиком»:
+ * есть смысл, только когда список пришёл из конкретной группы, а не из
+ * плоского «Один показатель» без группового контекста.
+ */
+function reportIndicatorsKeyboard(items, includeWhole) {
   var rows = items.map(function (it, i) { return [{ text: it.label, callback_data: 'repind:' + i }]; });
-  rows.push([{ text: '📦 Вся группа (последние значения)', callback_data: 'repwhole:0' }]);
+  if (includeWhole) rows.push([{ text: '📦 Вся группа (последние значения)', callback_data: 'repwhole:0' }]);
   return { inline_keyboard: rows };
 }
 

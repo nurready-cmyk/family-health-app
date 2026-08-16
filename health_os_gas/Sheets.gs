@@ -514,6 +514,13 @@ function personActiveGroups_(memberId) {
   return groups;
 }
 
+/** Все показатели человека, без деления на группы: [{key, label}]. */
+function personAllIndicators_(memberId) {
+  return distinctCodesForMember_(memberId).map(function (code) {
+    return { key: code, label: indicatorLabel_(code) };
+  });
+}
+
 /** Показатели этой группы, по которым у человека есть данные: [{key, label}]. */
 function personIndicatorsInGroup_(memberId, group) {
   var groupOf = codeToGroup_();
