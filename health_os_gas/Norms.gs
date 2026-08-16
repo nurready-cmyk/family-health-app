@@ -400,6 +400,21 @@ function containsPhrase_(norm, phrase) {
 }
 
 /**
+ * Лучшее совпадение текста с элементом произвольного списка (с тем же
+ * допуском на падежи, что и в containsPhrase_). Для отчёта: набор кнопок у
+ * каждого человека свой (виды обследований, которые он реально проходил),
+ * поэтому список передаётся, а не берётся из справочника целиком.
+ */
+function matchAmongList_(list, text) {
+  var norm = ' ' + normalizeForMatch_(text) + ' ';
+  var best = null, bestLen = 0;
+  list.forEach(function (item) {
+    if (containsPhrase_(norm, item) && item.length > bestLen) { best = item; bestLen = item.length; }
+  });
+  return best;
+}
+
+/**
  * Найти показатель где угодно в тексте (не обязательно перед числом) — для
  * вопросов вида «МНО за год», «результат ферритина» или просто «гемоглобин».
  */

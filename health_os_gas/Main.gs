@@ -131,6 +131,20 @@ function formatIndicatorHistoryLines_(rows, key, gender) {
 }
 
 /**
+ * «Дата [— вид] + заключение» на каждую строку истории обследования.
+ * includeType — показывать вид рядом с датой: нужно, когда в списке смешаны
+ * разные виды (текстовый запрос «обследования за год»); не нужно, когда все
+ * строки одного вида (кнопки отчёта — там вид уже назван в заголовке).
+ */
+function formatExamHistoryLines_(rows, includeType) {
+  return rows.map(function (r) {
+    var summary = r.summary.length > 150 ? r.summary.slice(0, 150) + '…' : r.summary;
+    var head = '• ' + displayDate_(r.date) + (includeType ? ' — <b>' + esc_(r.type) + '</b>' : '');
+    return head + (summary ? '\n  ' + esc_(summary) : '');
+  });
+}
+
+/**
  * Вопрос про историю показателя: «МНО за год», «гемоглобин». Без имени и
  * без единственного члена семьи не подхватываем — гадать, о ком спросили,
  * рискованнее, чем ответить «не понял».
@@ -191,10 +205,7 @@ function tryExamQuery_(u, access) {
   }
 
   var shown = rows.length > EXAM_ROWS_LIMIT ? rows.slice(-EXAM_ROWS_LIMIT) : rows;
-  var lines = shown.map(function (r) {
-    var summary = r.summary.length > 150 ? r.summary.slice(0, 150) + '…' : r.summary;
-    return '• ' + displayDate_(r.date) + ' — <b>' + esc_(r.type) + '</b>' + (summary ? '\n  ' + esc_(summary) : '');
-  });
+  var lines = formatExamHistoryLines_(shown, true);
 
   var head = esc_(member.name) + ' — обследования' + periodNote + ':\n';
   if (rows.length > shown.length) head += '(показаны последние ' + shown.length + ' из ' + rows.length + ')\n';
@@ -342,6 +353,23 @@ function sendIndicatorHistory_(u, access, memberId, key, count) {
   var lines = formatIndicatorHistoryLines_(shown, key, member.gender);
 
   var head = esc_(indicatorLabel_(key)) + ' — ' + esc_(member.name) +
+    ' (последние ' + shown.length + (count === 'all' ? '' : ' из ' + rows.length) + '):\n';
+  sendMessage(u.chatId, head + lines.join('\n'), mainMenuKeyboard());
+}
+
+/** Последние `count` записей одного вида обследования. count === 'all' — вся история. */
+function sendExamTypeHistory_(u, access, memberId, typeName, count) {
+  var member = getMemberById_(access, memberId);
+  var rows = examHistory_(memberId, { type: 'name', value: typeName }, null);
+  if (!rows.length) {
+    sendMessage(u.chatId, 'Записей «' + esc_(typeName) + '» у ' + esc_(member.name) + ' не нашёл.', mainMenuKeyboard());
+    return;
+  }
+
+  var shown = count === 'all' ? rows : rows.slice(-Number(count));
+  var lines = formatExamHistoryLines_(shown, false);
+
+  var head = esc_(typeName) + ' — ' + esc_(member.name) +
     ' (последние ' + shown.length + (count === 'all' ? '' : ' из ' + rows.length) + '):\n';
   sendMessage(u.chatId, head + lines.join('\n'), mainMenuKeyboard());
 }
@@ -534,7 +562,49 @@ function continueFlow_(u, access, session) {
         sendMessage(u.chatId, 'Какой показатель? Можно кнопкой или просто напишите название.', reportIndicatorsKeyboard(data.indicators, false));
         return;
       }
+      if (u.callbackData === 'repmode:exam') {
+        var member = getMemberById_(access, data.memberId);
+        var examTypes = personExamTypes_(data.memberId);
+        if (!examTypes.length) {
+          sendMessage(u.chatId, 'Нет сохранённых обследований у ' + esc_(member.name) + '. Внесите через кнопку 🩺 Обследования.', mainMenuKeyboard());
+          clearSession_(u.chatId);
+          return;
+        }
+        data.examTypes = examTypes;
+        setSession_(u.chatId, 'report:examtype', data);
+        sendMessage(u.chatId, 'Какое обследование? Можно кнопкой или напишите название.', reportExamTypesKeyboard(examTypes));
+        return;
+      }
       sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportModeKeyboard());
+      return;
+    case 'report:examtype':
+      var examKeyboard = reportExamTypesKeyboard(data.examTypes);
+      if (u.callbackData && u.callbackData.indexOf('repexam:') === 0) {
+        var pickedType = data.examTypes[Number(u.callbackData.split(':')[1])];
+        if (!pickedType) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', examKeyboard); return; }
+        data.reportExamType = pickedType;
+        setSession_(u.chatId, 'report:examcount', data);
+        sendMessage(u.chatId, pickedType + ' — сколько последних показать?', reportCountKeyboard());
+        return;
+      }
+      if (u.text) {
+        var typedType = matchAmongList_(data.examTypes, u.text);
+        if (typedType) {
+          data.reportExamType = typedType;
+          setSession_(u.chatId, 'report:examcount', data);
+          sendMessage(u.chatId, typedType + ' — сколько последних показать?', reportCountKeyboard());
+          return;
+        }
+        sendMessage(u.chatId, 'Не нашёл такое обследование у ' + esc_(getMemberById_(access, data.memberId).name) + '. Выберите кнопкой или напишите название точнее.', examKeyboard);
+        return;
+      }
+      sendMessage(u.chatId, 'Выберите кнопкой ниже или напишите название.', examKeyboard);
+      return;
+    case 'report:examcount':
+      if (!u.callbackData || u.callbackData.indexOf('repcount:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportCountKeyboard()); return; }
+      var examCount = u.callbackData.split(':')[1];
+      clearSession_(u.chatId);
+      sendExamTypeHistory_(u, access, data.memberId, data.reportExamType, examCount);
       return;
     case 'report:group':
       if (!u.callbackData || u.callbackData.indexOf('repgroup:') !== 0) { sendMessage(u.chatId, 'Выберите кнопкой ниже.', reportGroupsKeyboard(data.groups)); return; }

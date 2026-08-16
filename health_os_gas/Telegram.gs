@@ -124,9 +124,15 @@ function reportModeKeyboard() {
     inline_keyboard: [
       [{ text: '📁 По группе', callback_data: 'repmode:group' }],
       [{ text: '🔹 Один показатель', callback_data: 'repmode:single' }],
+      [{ text: '🩺 Обследования', callback_data: 'repmode:exam' }],
       [{ text: '📋 Всё сразу', callback_data: 'repall:0' }]
     ]
   };
+}
+
+/** Виды обследований, по которым у человека есть записи. callback_data: "repexam:<индекс>" */
+function reportExamTypesKeyboard(types) {
+  return { inline_keyboard: types.map(function (t, i) { return [{ text: t, callback_data: 'repexam:' + i }]; }) };
 }
 
 /** Группы, по которым у человека есть данные. callback_data: "repgroup:<индекс>" */

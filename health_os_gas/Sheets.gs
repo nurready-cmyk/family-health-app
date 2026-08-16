@@ -534,6 +534,27 @@ function personIndicatorsInGroup_(memberId, group) {
   return items;
 }
 
+/** Виды обследований, по которым у человека есть хоть одна запись — по алфавиту. */
+function personExamTypes_(memberId) {
+  var sheet = ss_().getSheetByName(SHEET_MEDICAL);
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+  var headers = values[0].map(function (h) { return String(h).trim(); });
+  var memberCol = headers.indexOf('Кто');
+  var typeCol = headers.indexOf('Что это было');
+  var dateCol = headers.indexOf('Дата');
+
+  var seen = {}, types = [];
+  values.slice(1).forEach(function (r) {
+    if (String(r[memberCol]).trim() !== memberId) return;
+    var type = String(r[typeCol] || '').trim();
+    if (!type || String(r[dateCol] || '') === '') return;
+    if (!seen[type]) { seen[type] = true; types.push(type); }
+  });
+  types.sort(function (a, b) { return a.localeCompare(b, 'ru'); });
+  return types;
+}
+
 /** Название обследования → его группа, по справочнику. */
 function examNameToGroup_() {
   var map = {};
