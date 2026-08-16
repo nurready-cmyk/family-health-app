@@ -236,11 +236,22 @@ function addFamilyMember_(name, gender, birthYear) {
 
 // ---------- Записи данных ----------
 
+/**
+ * Новая запись уходит не в конец, а сразу под шапку — по той же причине,
+ * что и в addAnalyses_: за годы лист дорастает до тысяч строк, и «допишется
+ * в конец» означало бы каждый раз прокручивать вниз.
+ */
 function addMedicalRecord_(recordDate, memberId, eventType, summary, documentUrl) {
-  appendRow_(SHEET_MEDICAL, {
+  var sheet = ss_().getSheetByName(SHEET_MEDICAL);
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var byHeader = {
     'Дата': recordDate, 'Кто': memberId, 'Что это было': eventType,
     'Заключение': summary, 'Ссылка на документ': documentUrl, 'Служебный id': newId_()
-  });
+  };
+  var values = headers.map(function (h) { return byHeader[h] != null ? byHeader[h] : ''; });
+  sheet.insertRowBefore(2);
+  sheet.getRange(2, 1, 1, values.length).setValues([values]);
+  reapplyMedicalRowValidation_(sheet, 2, 1);
 }
 
 // ---------- Особенности организма ----------
@@ -343,25 +354,43 @@ function findAnalysisRow_(sheet, memberId, entryDate, code) {
   return 0;
 }
 
-/** Записать пачку показателей {key: value} за одну дату одному человеку. */
+/**
+ * Записать пачку показателей {key: value} за одну дату одному человеку.
+ *
+ * Новые строки уходят не в конец листа, а сразу под шапку (строка 2), одной
+ * вставкой на всю пачку. Через год ежедневного заполнения лист доходит до
+ * тысяч строк, и «допишется в конец» означало бы каждый раз прокручивать
+ * вниз в поисках первой пустой строки — что бот, что рука. Здесь новое
+ * всегда наверху, обновление существующей записи остаётся на месте.
+ */
 function addAnalyses_(memberId, entryDate, indicators) {
   var sheet = analysesSheet_();
   ensureAnalysesHeaders_();
-  Object.keys(indicators).forEach(function (key) {
-    var value = indicators[key];
+
+  var keys = Object.keys(indicators);
+  var fresh = [];
+
+  // Обновления — сначала, пока номера строк ещё верны (вставка ниже их сдвинет).
+  keys.forEach(function (key) {
     var row = findAnalysisRow_(sheet, memberId, entryDate, key);
-    var labMin = '', labMax = '', id = newId_();
-    if (row) {
-      // Строка уже есть — норму с бланка, вписанную руками, не затираем.
-      var existing = sheet.getRange(row, ANALYSES_COL_LAB_MIN, 1, 4).getValues()[0];
-      labMin = existing[0]; labMax = existing[1]; id = existing[3] || id;
-    } else {
-      row = sheet.getLastRow() + 1;
-    }
+    if (!row) { fresh.push(key); return; }
+    // Норму с бланка, вписанную руками, не затираем.
+    var existing = sheet.getRange(row, ANALYSES_COL_LAB_MIN, 1, 4).getValues()[0];
     sheet.getRange(row, ANALYSES_COL_DATE, 1, ANALYSES_HEADERS.length).setValues([[
-      entryDate, memberId, indicatorLabel_(key), value, indicatorUnit_(key), labMin, labMax, key, id
+      entryDate, memberId, indicatorLabel_(key), indicators[key], indicatorUnit_(key),
+      existing[0], existing[1], key, existing[3] || newId_()
     ]]);
   });
+
+  if (fresh.length) {
+    sheet.insertRowsBefore(2, fresh.length);
+    fresh.forEach(function (key, i) {
+      sheet.getRange(2 + i, ANALYSES_COL_DATE, 1, ANALYSES_HEADERS.length).setValues([[
+        entryDate, memberId, indicatorLabel_(key), indicators[key], indicatorUnit_(key), '', '', key, newId_()
+      ]]);
+    });
+    reapplyAnalysesRowValidation_(sheet, 2, fresh.length);
+  }
 }
 
 /**

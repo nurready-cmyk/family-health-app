@@ -61,7 +61,51 @@ function onEdit(e) {
 
   if (name === SHEET_CATALOG) fillCatalogKey_(e);
   else if (name === SHEET_PERSONAL_NORMS) fillPersonalNormKey_(e);
-  else if (name === SHEET_ANALYSES) fillAnalysisIndicator_(e);
+  else if (name === SHEET_ANALYSES) { fillAnalysisIndicator_(e); pushDownIfRow2Complete_(e); }
+  else if (name === SHEET_MEDICAL) pushDownMedicalIfRow2Complete_(e);
+}
+
+/**
+ * Ручной ввод в первую строку данных листа «Анализы»: как только Дата, Кто,
+ * Показатель и Значение заполнены, строка сама уезжает на позицию 3, а
+ * наверху появляется свежая пустая строка 2 — готова для следующей записи.
+ * За годы заполнения лист дорастает до тысяч строк, и без этого каждая новая
+ * запись означала бы прокрутку вниз в поисках первой пустой строки.
+ *
+ * Срабатывает, только когда правка ЗАТРАГИВАЕТ строку 2 (проверка диапазона,
+ * а не точное равенство — вставка через буфer обмена правит несколько ячеек
+ * одним событием).
+ */
+function pushDownIfRow2Complete_(e) {
+  var sheet = e.range.getSheet();
+  if (e.range.getRow() > 2 || e.range.getLastRow() < 2) return;
+
+  var row = sheet.getRange(2, ANALYSES_COL_DATE, 1, ANALYSES_COL_VALUE).getValues()[0];
+  var complete = row[ANALYSES_COL_DATE - 1] !== '' && row[ANALYSES_COL_MEMBER - 1] !== '' &&
+    row[ANALYSES_COL_INDICATOR - 1] !== '' && row[ANALYSES_COL_VALUE - 1] !== '';
+  if (!complete) return;
+
+  sheet.insertRowBefore(2);
+  reapplyAnalysesRowValidation_(sheet, 2, 1);
+}
+
+/** То же самое для «Обследования»: Дата, Кто, Что это было, Заключение. */
+function pushDownMedicalIfRow2Complete_(e) {
+  var sheet = e.range.getSheet();
+  if (e.range.getRow() > 2 || e.range.getLastRow() < 2) return;
+
+  var headers = headerIndex_(sheet);
+  var dateCol = headers['Дата'], memberCol = headers['Кто'],
+      typeCol = headers['Что это было'], summaryCol = headers['Заключение'];
+  if (!dateCol || !memberCol || !typeCol || !summaryCol) return;
+
+  var row = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var complete = String(row[dateCol - 1]) !== '' && String(row[memberCol - 1]) !== '' &&
+    String(row[typeCol - 1]) !== '' && String(row[summaryCol - 1]) !== '';
+  if (!complete) return;
+
+  sheet.insertRowBefore(2);
+  reapplyMedicalRowValidation_(sheet, 2, 1);
 }
 
 function headerIndex_(sheet) {
@@ -163,6 +207,50 @@ function memberNamesRange_() {
 }
 
 /**
+ * Дропдауны «Кто»/«Показатель» на заданный диапазон строк листа «Анализы».
+ * Вызывается и на весь лист (applyValidations_), и точечно на новые строки,
+ * которые появились после вставки сверху (addAnalyses_, ручной ввод) —
+ * вставленная строка не обязана унаследовать валидацию соседней.
+ */
+function reapplyAnalysesRowValidation_(sheet, startRow, count) {
+  var members = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(memberNamesRange_(), true)
+    .setAllowInvalid(false)
+    .setHelpText('Выберите члена семьи из списка.')
+    .build();
+  sheet.getRange(startRow, ANALYSES_COL_MEMBER, count, 1).setDataValidation(members);
+
+  sheet.getRange(startRow, ANALYSES_COL_INDICATOR, count, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInRange(ss_().getSheetByName(SHEET_CATALOG).getRange('B2:B500'), true)
+      .setAllowInvalid(false)
+      .setHelpText('Выберите показатель из справочника — сначала впишите его в «Справочник анализов», если его там ещё нет.')
+      .build());
+}
+
+/** То же самое для «Обследования» — кто из списка, тип из справочника (или своё). */
+function reapplyMedicalRowValidation_(sheet, startRow, count) {
+  var members = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(memberNamesRange_(), true)
+    .setAllowInvalid(false)
+    .setHelpText('Выберите члена семьи из списка.')
+    .build();
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
+    .map(function (h) { return String(h).trim(); });
+  var memberCol = headers.indexOf('Кто') + 1;
+  var typeCol = headers.indexOf('Что это было') + 1;
+  if (memberCol) sheet.getRange(startRow, memberCol, count, 1).setDataValidation(members);
+  if (typeCol) {
+    sheet.getRange(startRow, typeCol, count, 1).setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireValueInRange(ss_().getSheetByName(SHEET_EXAM_CATALOG).getRange('B2:B500'), true)
+        .setAllowInvalid(true)   // разрешаем своё: не каждое обследование попадёт в справочник
+        .setHelpText('Выберите из справочника обследований или впишите своё.')
+        .build());
+  }
+}
+
+/**
  * Списки строятся на диапазонах, а не на списке значений: добавили человека в
  * Family_Members или обследование в справочник — выпадающий список подхватил
  * это сам, без повторного запуска чего-либо.
@@ -175,35 +263,14 @@ function applyValidations_() {
     .build();
 
   var analyses = analysesSheet_();
-  analyses.getRange(2, ANALYSES_COL_MEMBER, analyses.getMaxRows() - 1, 1)
-    .setDataValidation(members);
-  analyses.getRange(2, ANALYSES_COL_INDICATOR, analyses.getMaxRows() - 1, 1).setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(ss_().getSheetByName(SHEET_CATALOG).getRange('B2:B500'), true)
-      .setAllowInvalid(false)
-      .setHelpText('Выберите показатель из справочника — сначала впишите его в «Справочник анализов», если его там ещё нет.')
-      .build());
+  reapplyAnalysesRowValidation_(analyses, 2, analyses.getMaxRows() - 1);
   analyses.setFrozenRows(1);
   analyses.setFrozenColumns(3);
   analyses.getRange(1, 1, 1, ANALYSES_HEADERS.length)
     .setFontWeight('bold').setBackground('#e8f0fe').setWrap(true);
 
   var medical = ss_().getSheetByName(SHEET_MEDICAL);
-  var medHeaders = medical.getRange(1, 1, 1, medical.getLastColumn()).getValues()[0]
-    .map(function (h) { return String(h).trim(); });
-  var memberCol = medHeaders.indexOf('Кто') + 1;
-  var typeCol = medHeaders.indexOf('Что это было') + 1;
-  if (memberCol) {
-    medical.getRange(2, memberCol, medical.getMaxRows() - 1, 1).setDataValidation(members);
-  }
-  if (typeCol) {
-    medical.getRange(2, typeCol, medical.getMaxRows() - 1, 1).setDataValidation(
-      SpreadsheetApp.newDataValidation()
-        .requireValueInRange(ss_().getSheetByName(SHEET_EXAM_CATALOG).getRange('B2:B500'), true)
-        .setAllowInvalid(true)   // разрешаем своё: не каждое обследование попадёт в справочник
-        .setHelpText('Выберите из справочника обследований или впишите своё.')
-        .build());
-  }
+  reapplyMedicalRowValidation_(medical, 2, medical.getMaxRows() - 1);
 
   // Особенности организма: кто — из списка, тип — из фиксированного набора,
   // чтобы в выгрузке для ИИ не оказалось пяти написаний слова «аллергия».
